@@ -12,14 +12,15 @@ import { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Logger } from "@babylonjs/core/Misc/logger";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { Sound } from "@babylonjs/core/Audio/sound"
-import { AssetsManager} from "@babylonjs/core/Misc/assetsManager"
+import { Sound } from "@babylonjs/core/Audio/sound";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode} from "@babylonjs/core";
 
 
 // Side effects
 import "@babylonjs/core/Helpers/sceneHelpers";
 import "@babylonjs/inspector";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import "@babylonjs/loaders/OBJ/objFileLoader";
+import "@babylonjs/loaders/OBJ/mtlFileLoader";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 
 class Game 
@@ -34,6 +35,8 @@ class Game
 
     private gameStarted : boolean;
     private gamePaused : boolean;
+
+    private world : TransformNode | null;
 
     private weapon_arrow : TransformNode | null;
     private weapon_archery : TransformNode | null;
@@ -64,6 +67,9 @@ class Game
 
         this.gameStarted = false;
         this.gamePaused = true;
+
+        // World
+        this.world = null;
         
         // Weapons
         this.weapon_arrow = null;
@@ -100,7 +106,7 @@ class Game
     private async createScene() 
     {
         // This creates and positions a first-person camera (non-mesh)
-        var camera = new UniversalCamera("camera1", new Vector3(0, 1.6, 0), this.scene);
+        var camera = new UniversalCamera("camera1", new Vector3(-6.18, 2.03 + 1.6, 1.16), this.scene);
         camera.fov = 90 * Math.PI / 180;
         camera.minZ = .1;
         camera.maxZ = 100;
@@ -116,7 +122,7 @@ class Game
        var light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene);
 
         // Creates a default skybox
-        const environment = this.scene.createDefaultEnvironment({
+        /*const environment = this.scene.createDefaultEnvironment({
             createGround: true,
             groundSize: 100,
             skyboxSize: 50,
@@ -125,7 +131,7 @@ class Game
 
         // Make sure the ground and skybox are not pickable!
         environment!.ground!.isPickable = false;
-        environment!.skybox!.isPickable = false;
+        environment!.skybox!.isPickable = false;*/
 
         // Creates the XR experience helper
         const xrHelper = await this.scene.createDefaultXRExperienceAsync({});
@@ -165,6 +171,30 @@ class Game
         
         // The assets manager can be used to load multiple assets
         var assetsManager = new AssetsManager(this.scene);
+
+        this.world = new TransformNode("world", this.scene);
+        var world_task = assetsManager.addMeshTask("world", "", "assets/models/", "PolyIsland.obj");
+        world_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach((mesh) => {
+                mesh.parent = this.world;
+                // Mountains and canyon
+                if (mesh.name == "Icosphere") {
+                    var mountainMat = new StandardMaterial("mountainMat", this.scene);
+                    mountainMat.diffuseColor = new Color3(130/255,144/255,11/255);
+                    mountainMat.specularColor = new Color3(127/255, 127/255, 127/255);
+                    mountainMat.emissiveColor = new Color3(0);
+
+                    mesh.material = mountainMat;
+                } else if (mesh.name == "Plane") {
+                    var canyonMat = new StandardMaterial("canyonMat", this.scene);
+                    canyonMat.diffuseColor = new Color3(6/255,53/255,6/255);
+                    canyonMat.specularColor = new Color3(127/255, 127/255, 127/255);
+                    canyonMat.emissiveColor = new Color3(0);
+
+                    mesh.material = canyonMat;
+                }
+            });
+        }
 
         var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
         sound_swoosh_task.onSuccess = (task) => {
