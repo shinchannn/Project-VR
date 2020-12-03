@@ -11,6 +11,10 @@ import { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Logger } from "@babylonjs/core/Misc/logger";
+import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { Sound } from "@babylonjs/core/Audio/sound"
+import { AssetsManager} from "@babylonjs/core/Misc/assetsManager"
+
 
 // Side effects
 import "@babylonjs/core/Helpers/sceneHelpers";
@@ -26,6 +30,14 @@ class Game
     private leftController: WebXRInputSource | null;
     private rightController: WebXRInputSource | null;
 
+    private gameStarted : boolean;
+    private gamePaused : boolean;
+
+    private weapon_arrow : AbstractMesh | null;
+    private weapon_archery : AbstractMesh | null;
+
+    private sound_swoosh : Sound | null;
+
     constructor()
     {
         // Get the canvas element 
@@ -40,6 +52,16 @@ class Game
         this.xrCamera = null;
         this.leftController = null;
         this.rightController = null;
+
+        this.gameStarted = false;
+        this.gamePaused = true;
+        
+        // Weapons
+        this.weapon_arrow = null;
+        this.weapon_archery = null;
+
+        // Sound effects
+        this.sound_swoosh = null;
     }
 
     start() : void 
@@ -96,6 +118,58 @@ class Game
 
         // Remove default teleportation
         xrHelper.teleportation.dispose();
+
+        // This executes when the user enters or exits immersive mode
+        xrHelper.enterExitUI.activeButtonChangedObservable.add((enterExit) => {
+            // If we are entering immersive mode
+            if(enterExit)
+            {
+                // Start the game only in immersive mode
+                this.gameStarted = true;
+
+                // Need to set both play and autoplay depending on
+                // whether the music has finished loading or not
+                // if(this.sound_swoosh)
+                // {
+                //     this.sound_swoosh.autoplay = true;
+                //     this.sound_swoosh.play();
+                // } 
+                        
+            }
+            // This boolean flag is necessary to prevent the pause function
+            // from being executed twice (this may be a bug in the xrHelper)
+            else if(!this.gamePaused)
+            {
+                // Pause the game and music upon exit
+                this.gameStarted = false;
+                // this.pause();
+            }
+        });
+        
+        // The assets manager can be used to load multiple assets
+        var assetsManager = new AssetsManager(this.scene);
+
+        var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
+        sound_swoosh_task.onSuccess = (task) => {
+            this.sound_swoosh = new Sound("swoosh", task.data, this.scene, null, {
+                loop: false,
+                autoplay: false,
+            });
+        }
+
+        var weapon_archery_task = assetsManager.addMeshTask("weapon_archery", "", "assets/models/", "bow.obj");
+        weapon_archery_task.onSuccess = (task) => {
+            this.weapon_archery = task.loadedMeshes[0];
+        }
+
+        // var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "bow.obj");
+        // weapon_arrow_task.onSuccess = (task) => {
+        //     this.weapon_arrow = task.loadedMeshes[0];
+        // }
+
+        // This loads all the assets and displays a loading screen
+        assetsManager.load();
+        
 
         // Assign the left and right controllers to member variables
         xrHelper.input.onControllerAddedObservable.add((inputSource) => {
