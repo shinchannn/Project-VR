@@ -19,6 +19,8 @@ import { AssetsManager} from "@babylonjs/core/Misc/assetsManager"
 // Side effects
 import "@babylonjs/core/Helpers/sceneHelpers";
 import "@babylonjs/inspector";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 
 class Game 
 { 
@@ -33,8 +35,15 @@ class Game
     private gameStarted : boolean;
     private gamePaused : boolean;
 
-    private weapon_arrow : AbstractMesh | null;
-    private weapon_archery : AbstractMesh | null;
+    private weapon_arrow : TransformNode | null;
+    private weapon_archery : TransformNode | null;
+
+    private weapon_rifle : TransformNode | null;
+    private weapon_hatchet : TransformNode | null;
+
+    private weapon_hatchet_scale : number;
+    private weapon_archery_scale: number;
+
 
     private sound_swoosh : Sound | null;
 
@@ -59,6 +68,12 @@ class Game
         // Weapons
         this.weapon_arrow = null;
         this.weapon_archery = null;
+        this.weapon_rifle = null;
+        this.weapon_hatchet = null;
+
+        // scale factors
+        this.weapon_hatchet_scale = .2;
+        this.weapon_archery_scale = .1;
 
         // Sound effects
         this.sound_swoosh = null;
@@ -97,6 +112,8 @@ class Game
        var pointLight = new PointLight("pointLight", new Vector3(0, 2.5, 0), this.scene);
        pointLight.intensity = 1.0;
        pointLight.diffuse = new Color3(.25, .25, .25);
+
+       var light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene);
 
         // Creates a default skybox
         const environment = this.scene.createDefaultEnvironment({
@@ -157,15 +174,40 @@ class Game
             });
         }
 
+        this.weapon_archery = new TransformNode("archery", this.scene);
         var weapon_archery_task = assetsManager.addMeshTask("weapon_archery", "", "assets/models/", "bow.obj");
         weapon_archery_task.onSuccess = (task) => {
-            this.weapon_archery = task.loadedMeshes[0];
+            task.loadedMeshes.forEach(element => {
+                element.parent = this.weapon_archery;
+            });
+            this.weapon_archery?.scaling.scaleInPlace(this.weapon_archery_scale);
         }
 
-        // var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "bow.obj");
-        // weapon_arrow_task.onSuccess = (task) => {
-        //     this.weapon_arrow = task.loadedMeshes[0];
-        // }
+        this.weapon_arrow = new TransformNode("weapon_arrow", this.scene);
+        var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "arrow.obj");
+        weapon_arrow_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                element.parent = this.weapon_arrow;
+            });
+        }
+
+        this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
+        var weapon_rifle_task = assetsManager.addMeshTask("weapon_rifle", "", "assets/models/", "rifle.obj");
+        weapon_rifle_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                element.parent = this.weapon_rifle;
+            });
+        }
+
+
+        this.weapon_hatchet = new TransformNode("weapon_hatchet", this.scene);
+        var weapon_hatchet_task = assetsManager.addMeshTask("weapon_hatchet", "", "assets/models/", "hatchet.obj");
+        weapon_hatchet_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                element.parent = this.weapon_hatchet;
+            });
+            this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
+        }
 
         // This loads all the assets and displays a loading screen
         assetsManager.load();
