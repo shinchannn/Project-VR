@@ -43,6 +43,7 @@ class Game
     private world : TransformNode | null;
 
     private weapon_panel : CylinderPanel | null;
+    private weapon_panel_radius : number;
 
     private weapon_arrow : TransformNode | null;
     private weapon_archery : TransformNode | null;
@@ -55,12 +56,11 @@ class Game
     private weapon_rifle_scale: number;
     private weapon_arrow_scale: number;
 
+    private weapon_in_hand : TransformNode | null;
 
     private sound_swoosh : Sound | null;
 
     private gui_manager : GUI3DManager | null;
-
-    private weapon_panel_radius : number;
 
     private weapon_list : Array<TransformNode>;
 
@@ -112,6 +112,8 @@ class Game
         this.gui_manager = null;
 
         this.right_grip_transform = null;
+
+        this.weapon_in_hand = null;
     }
 
     start() : void 
@@ -175,6 +177,9 @@ class Game
         // Remove default teleportation
         xrHelper.teleportation.dispose();
 
+        // Remove pointer laser 
+        xrHelper.pointerSelection.dispose();
+
         this.right_grip_transform = new TransformNode("right hand");
 
         // This executes when the user enters or exits immersive mode
@@ -203,100 +208,9 @@ class Game
                 // this.pause();
             }
         });
-        
-        // The assets manager can be used to load multiple assets
-        var assetsManager = new AssetsManager(this.scene);
 
-        this.world = new TransformNode("world", this.scene);
-        var world_task = assetsManager.addMeshTask("world", "", "assets/models/", "PolyIsland.obj");
-        world_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach((mesh) => {
-                mesh.parent = this.world;
-                // Mountains and canyon
-                if (mesh.name == "Icosphere") {
-                    var mountainMat = new StandardMaterial("mountainMat", this.scene);
-                    mountainMat.diffuseColor = new Color3(130/255,144/255,11/255);
-                    mountainMat.specularColor = new Color3(127/255, 127/255, 127/255);
-                    mountainMat.emissiveColor = new Color3(0);
-
-                    mesh.material = mountainMat;
-                } else if (mesh.name == "Plane") {
-                    var canyonMat = new StandardMaterial("canyonMat", this.scene);
-                    canyonMat.diffuseColor = new Color3(6/255,53/255,6/255);
-                    canyonMat.specularColor = new Color3(127/255, 127/255, 127/255);
-                    canyonMat.emissiveColor = new Color3(0);
-
-                    mesh.material = canyonMat;
-                }
-            });
-        }
-        this.world.setEnabled(false);
-
-        var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
-        sound_swoosh_task.onSuccess = (task) => {
-            this.sound_swoosh = new Sound("swoosh", task.data, this.scene, null, {
-                loop: false,
-                autoplay: false,
-            });
-        }
-
-        this.weapon_archery = new TransformNode("archery", this.scene);
-        var weapon_archery_task = assetsManager.addMeshTask("weapon_archery", "", "assets/models/", "bow.obj");
-        weapon_archery_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach(element => {
-                element.parent = this.weapon_archery;
-                // for some unknown reason, skip nodes called "default"
-                if (element.name == "default") {
-                    element.dispose()
-                    return;
-                }
-            });
-            this.weapon_archery?.scaling.scaleInPlace(this.weapon_archery_scale);
-        }
-
-        this.weapon_arrow = new TransformNode("weapon_arrow", this.scene);
-        var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "arrow.obj");
-        weapon_arrow_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach(element => {
-                if (element.name == "default") {
-                    element.dispose()
-                    return;
-                }
-                element.parent = this.weapon_arrow;
-            });
-            this.weapon_arrow?.scaling.scaleInPlace(this.weapon_arrow_scale);
-        }
-
-        this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
-        var weapon_rifle_task = assetsManager.addMeshTask("weapon_rifle", "", "assets/models/", "rifle.obj");
-        weapon_rifle_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach(element => {
-                if (element.name == "default") {
-                    element.dispose()
-                    return;
-                }
-                element.parent = this.weapon_rifle;
-            });
-            this.weapon_rifle?.scaling.scaleInPlace(this.weapon_rifle_scale);
-        }
-
-
-        this.weapon_hatchet = new TransformNode("weapon_hatchet", this.scene);
-        var weapon_hatchet_task = assetsManager.addMeshTask("weapon_hatchet", "", "assets/models/", "hatchet.obj");
-        weapon_hatchet_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach(element => {
-                if (element.name == "default") {
-                    element.dispose()
-                    return;
-                }
-                element.parent = this.weapon_hatchet;
-            });
-            this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
-        }
-
-        // This loads all the assets and displays a loading screen
-        assetsManager.load();
-        
+        // Loads world, sound effects and weapon meshes
+        this.loadAssets();
 
         // Assign the left and right controllers to member variables
         xrHelper.input.onControllerAddedObservable.add((inputSource) => {
@@ -319,15 +233,15 @@ class Game
             }
         });
 
-        this.weapon_list.push(this.weapon_rifle);
-        this.weapon_list.push(this.weapon_arrow);
-        this.weapon_list.push(this.weapon_hatchet);
-        this.weapon_list.push(this.weapon_archery);
+        this.weapon_list.push(this.weapon_rifle!);
+        this.weapon_list.push(this.weapon_arrow!);
+        this.weapon_list.push(this.weapon_hatchet!);
+        this.weapon_list.push(this.weapon_archery!);
 
         this.scene.debugLayer.show(); 
     }
 
-    // The main update loop will be executed once per frame before the scene is rendered
+     // The main update loop will be executed once per frame before the scene is rendered
     private update() : void
     {
         this.processControllerInput();
@@ -338,24 +252,39 @@ class Game
     {
         this.onLeftTrigger(this.leftController?.motionController?.getComponent("xr-standard-trigger"));
         this.onRightSqueeze(this.rightController?.motionController?.getComponent("xr-standard-squeeze"));
+        this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
+    }
+
+    private onRightTrigger(component?: WebXRControllerComponent) {
+        // What will happend depends on what's on hand
+        if (component?.pressed) {
+            if (this.weapon_in_hand == this.weapon_rifle) {
+                if (!this.sound_swoosh?.isPlaying) {
+                    this.sound_swoosh?.play();
+                }
+            }
+        }
     }
 
     private onRightSqueeze(component?: WebXRControllerComponent) {
         if (component?.changes.pressed) {
             if (component?.pressed) {
-                this.weapon_list.forEach(weapon => {
-                    weapon.getChildMeshes().forEach(mesh => {
-                        // console.log(mesh.name);
-                        if (this.rightController!.grip!.intersectsMesh(mesh)) {
-                            weapon.setParent(this.right_grip_transform);
-                            console.log(mesh.name);
-                        };
-                    });
-                });
+                this.findIntersectedWeapon();
             } else {
-                this.weapon_list.forEach(weapon => {
-                    weapon.setParent(null);
-                });
+                this.weapon_in_hand?.setParent(null);
+                this.weapon_in_hand = null;
+            }
+        }
+    }
+
+    private findIntersectedWeapon() : void {
+        for (const weapon of this.weapon_list) {
+            for (const mesh of weapon.getChildMeshes()) {
+                if (this.rightController!.grip!.intersectsMesh(mesh)) {
+                    weapon.setParent(this.right_grip_transform);
+                    this.weapon_in_hand = weapon;
+                    return;
+                }
             }
         }
     }
@@ -367,18 +296,19 @@ class Game
                 if (this.weapon_panel==null) {
                     this.renderWeaponPanel();
                 } else if (this.weapon_panel?.isVisible) {
-                    this.weapon_panel.children.forEach(child => {
-                        child.isVisible = false;
-                    });
-                    this.weapon_panel!.isVisible = false;
+                    this.setWeaponPanelVisibility(false);
                 } else if (!this.weapon_panel?.isVisible) {
-                    this.weapon_panel.children.forEach(child => {
-                        child.isVisible = true;
-                    });
-                    this.weapon_panel.isVisible = true;
+                    this.setWeaponPanelVisibility(true);
                 }
             }
         }
+    }
+
+    private setWeaponPanelVisibility(b: boolean) : void {
+        this.weapon_panel!.children.forEach(child => {
+            child.isVisible = b;
+        });
+        this.weapon_panel!.isVisible = b;
     }
 
     private renderWeaponPanel() : void
@@ -422,6 +352,100 @@ class Game
         // within arm's reach
         panel_position.addInPlace(new Vector3(0, 0, 1));
         this.weapon_panel.position = panel_position;
+    }
+
+    private loadAssets() : void {
+        // The assets manager can be used to load multiple assets
+        var assetsManager = new AssetsManager(this.scene);
+        this.world = new TransformNode("world", this.scene);
+        var world_task = assetsManager.addMeshTask("world", "", "assets/models/", "PolyIsland.obj");
+        world_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach((mesh) => {
+                mesh.parent = this.world;
+                // Mountains and canyon
+                if (mesh.name == "Icosphere") {
+                    var mountainMat = new StandardMaterial("mountainMat", this.scene);
+                    mountainMat.diffuseColor = new Color3(130 / 255, 144 / 255, 11 / 255);
+                    mountainMat.specularColor = new Color3(127 / 255, 127 / 255, 127 / 255);
+                    mountainMat.emissiveColor = new Color3(0);
+
+                    mesh.material = mountainMat;
+                }
+                else if (mesh.name == "Plane") {
+                    var canyonMat = new StandardMaterial("canyonMat", this.scene);
+                    canyonMat.diffuseColor = new Color3(6 / 255, 53 / 255, 6 / 255);
+                    canyonMat.specularColor = new Color3(127 / 255, 127 / 255, 127 / 255);
+                    canyonMat.emissiveColor = new Color3(0);
+
+                    mesh.material = canyonMat;
+                }
+            });
+        };
+        this.world.setEnabled(false);
+
+        var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
+        sound_swoosh_task.onSuccess = (task) => {
+            this.sound_swoosh = new Sound("swoosh", task.data, this.scene, null, {
+                loop: false,
+            });
+        };
+
+        this.weapon_archery = new TransformNode("archery", this.scene);
+        var weapon_archery_task = assetsManager.addMeshTask("weapon_archery", "", "assets/models/", "bow.obj");
+        weapon_archery_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                element.parent = this.weapon_archery;
+                // for some unknown reason, skip nodes called "default"
+                if (element.name == "default") {
+                    element.dispose();
+                    return;
+                }
+            });
+            this.weapon_archery?.scaling.scaleInPlace(this.weapon_archery_scale);
+        };
+
+        this.weapon_arrow = new TransformNode("weapon_arrow", this.scene);
+        var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "arrow.obj");
+        weapon_arrow_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                if (element.name == "default") {
+                    element.dispose();
+                    return;
+                }
+                element.parent = this.weapon_arrow;
+            });
+            this.weapon_arrow?.scaling.scaleInPlace(this.weapon_arrow_scale);
+        };
+
+        this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
+        var weapon_rifle_task = assetsManager.addMeshTask("weapon_rifle", "", "assets/models/", "rifle.obj");
+        weapon_rifle_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                if (element.name == "default") {
+                    element.dispose();
+                    return;
+                }
+                element.parent = this.weapon_rifle;
+            });
+            this.weapon_rifle?.scaling.scaleInPlace(this.weapon_rifle_scale);
+        };
+
+
+        this.weapon_hatchet = new TransformNode("weapon_hatchet", this.scene);
+        var weapon_hatchet_task = assetsManager.addMeshTask("weapon_hatchet", "", "assets/models/", "hatchet.obj");
+        weapon_hatchet_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                if (element.name == "default") {
+                    element.dispose();
+                    return;
+                }
+                element.parent = this.weapon_hatchet;
+            });
+            this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
+        };
+
+        // This loads all the assets and displays a loading screen
+        assetsManager.load();
     }
 }
 /******* End of the Game class ******/   
