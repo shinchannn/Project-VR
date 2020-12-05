@@ -13,7 +13,11 @@ import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Logger } from "@babylonjs/core/Misc/logger";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Sound } from "@babylonjs/core/Audio/sound";
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode} from "@babylonjs/core";
+import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
+import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
+import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh} from "@babylonjs/core";
+import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
 
 // Side effects
@@ -38,6 +42,8 @@ class Game
 
     private world : TransformNode | null;
 
+    private weapon_panel : CylinderPanel | null;
+
     private weapon_arrow : TransformNode | null;
     private weapon_archery : TransformNode | null;
 
@@ -46,9 +52,19 @@ class Game
 
     private weapon_hatchet_scale : number;
     private weapon_archery_scale: number;
+    private weapon_rifle_scale: number;
+    private weapon_arrow_scale: number;
 
 
     private sound_swoosh : Sound | null;
+
+    private gui_manager : GUI3DManager | null;
+
+    private weapon_panel_radius : number;
+
+    private weapon_list : Array<TransformNode>;
+
+    private right_grip_transform : TransformNode | null;
 
     constructor()
     {
@@ -71,18 +87,31 @@ class Game
         // World
         this.world = null;
         
+        // Weapon panel
+        this.weapon_panel = null;
+        this.weapon_panel_radius = 20;
+
         // Weapons
         this.weapon_arrow = null;
         this.weapon_archery = null;
         this.weapon_rifle = null;
         this.weapon_hatchet = null;
 
+        // Weapon list
+        this.weapon_list = [];
+
         // scale factors
-        this.weapon_hatchet_scale = .2;
-        this.weapon_archery_scale = .1;
+        this.weapon_hatchet_scale = .05;
+        this.weapon_archery_scale = .01;
+        this.weapon_rifle_scale = .2;
+        this.weapon_arrow_scale = .1;
 
         // Sound effects
         this.sound_swoosh = null;
+
+        this.gui_manager = null;
+
+        this.right_grip_transform = null;
     }
 
     start() : void 
@@ -119,7 +148,11 @@ class Game
        pointLight.intensity = 1.0;
        pointLight.diffuse = new Color3(.25, .25, .25);
 
-       var light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene);
+        var light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene);
+
+        // The manager automates some of the GUI creation steps
+        this.gui_manager = new GUI3DManager(this.scene);
+
 
         // Creates a default skybox
         /*const environment = this.scene.createDefaultEnvironment({
@@ -141,6 +174,8 @@ class Game
 
         // Remove default teleportation
         xrHelper.teleportation.dispose();
+
+        this.right_grip_transform = new TransformNode("right hand");
 
         // This executes when the user enters or exits immersive mode
         xrHelper.enterExitUI.activeButtonChangedObservable.add((enterExit) => {
@@ -195,6 +230,7 @@ class Game
                 }
             });
         }
+        this.world.setEnabled(false);
 
         var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
         sound_swoosh_task.onSuccess = (task) => {
@@ -209,6 +245,11 @@ class Game
         weapon_archery_task.onSuccess = (task) => {
             task.loadedMeshes.forEach(element => {
                 element.parent = this.weapon_archery;
+                // for some unknown reason, skip nodes called "default"
+                if (element.name == "default") {
+                    element.dispose()
+                    return;
+                }
             });
             this.weapon_archery?.scaling.scaleInPlace(this.weapon_archery_scale);
         }
@@ -217,16 +258,26 @@ class Game
         var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "arrow.obj");
         weapon_arrow_task.onSuccess = (task) => {
             task.loadedMeshes.forEach(element => {
+                if (element.name == "default") {
+                    element.dispose()
+                    return;
+                }
                 element.parent = this.weapon_arrow;
             });
+            this.weapon_arrow?.scaling.scaleInPlace(this.weapon_arrow_scale);
         }
 
         this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
         var weapon_rifle_task = assetsManager.addMeshTask("weapon_rifle", "", "assets/models/", "rifle.obj");
         weapon_rifle_task.onSuccess = (task) => {
             task.loadedMeshes.forEach(element => {
+                if (element.name == "default") {
+                    element.dispose()
+                    return;
+                }
                 element.parent = this.weapon_rifle;
             });
+            this.weapon_rifle?.scaling.scaleInPlace(this.weapon_rifle_scale);
         }
 
 
@@ -234,6 +285,10 @@ class Game
         var weapon_hatchet_task = assetsManager.addMeshTask("weapon_hatchet", "", "assets/models/", "hatchet.obj");
         weapon_hatchet_task.onSuccess = (task) => {
             task.loadedMeshes.forEach(element => {
+                if (element.name == "default") {
+                    element.dispose()
+                    return;
+                }
                 element.parent = this.weapon_hatchet;
             });
             this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
@@ -248,6 +303,7 @@ class Game
             if(inputSource.uniqueId.endsWith("right"))
             {
                 this.rightController = inputSource;
+                this.right_grip_transform!.parent = this.rightController.grip!;
             }
             else 
             {
@@ -257,12 +313,16 @@ class Game
 
         // Don't forget to deparent objects from the controllers or they will be destroyed!
         xrHelper.input.onControllerRemovedObservable.add((inputSource) => {
-
             if(inputSource.uniqueId.endsWith("right")) 
             {
 
             }
         });
+
+        this.weapon_list.push(this.weapon_rifle);
+        this.weapon_list.push(this.weapon_arrow);
+        this.weapon_list.push(this.weapon_hatchet);
+        this.weapon_list.push(this.weapon_archery);
 
         this.scene.debugLayer.show(); 
     }
@@ -270,9 +330,99 @@ class Game
     // The main update loop will be executed once per frame before the scene is rendered
     private update() : void
     {
- 
+        this.processControllerInput();
     }
 
+    // Process event handlers for controller input
+    private processControllerInput()
+    {
+        this.onLeftTrigger(this.leftController?.motionController?.getComponent("xr-standard-trigger"));
+        this.onRightSqueeze(this.rightController?.motionController?.getComponent("xr-standard-squeeze"));
+    }
+
+    private onRightSqueeze(component?: WebXRControllerComponent) {
+        if (component?.changes.pressed) {
+            if (component?.pressed) {
+                this.weapon_list.forEach(weapon => {
+                    weapon.getChildMeshes().forEach(mesh => {
+                        // console.log(mesh.name);
+                        if (this.rightController!.grip!.intersectsMesh(mesh)) {
+                            weapon.setParent(this.right_grip_transform);
+                            console.log(mesh.name);
+                        };
+                    });
+                });
+            } else {
+                this.weapon_list.forEach(weapon => {
+                    weapon.setParent(null);
+                });
+            }
+        }
+    }
+
+    private onLeftTrigger(component?: WebXRControllerComponent)
+    {
+        if (component?.changes.pressed) {
+            if (component.pressed) {
+                if (this.weapon_panel==null) {
+                    this.renderWeaponPanel();
+                } else if (this.weapon_panel?.isVisible) {
+                    this.weapon_panel.children.forEach(child => {
+                        child.isVisible = false;
+                    });
+                    this.weapon_panel!.isVisible = false;
+                } else if (!this.weapon_panel?.isVisible) {
+                    this.weapon_panel.children.forEach(child => {
+                        child.isVisible = true;
+                    });
+                    this.weapon_panel.isVisible = true;
+                }
+            }
+        }
+    }
+
+    private renderWeaponPanel() : void
+    {
+        if (this.weapon_panel == null) {
+            this.weapon_panel = new CylinderPanel();
+            this.gui_manager!.addControl(this.weapon_panel);
+            this.weapon_panel.radius = this.weapon_panel_radius;
+            this.weapon_panel.margin = 0.1;
+            this.weapon_panel.blockLayout = true;
+            this.weapon_panel.rows = 2;
+            this.weapon_panel.blockLayout = true;
+    
+            var a = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
+            a.visibility = 0.1;
+            var pushButton = new MeshButton3D(a, "pushButton");
+            this.weapon_rifle!.parent = a;
+            this.weapon_panel.addControl(pushButton);
+    
+            var b = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
+            b.visibility = 0.1;
+            var pushButton = new MeshButton3D(b, "pushButton");
+            this.weapon_archery!.parent = b;
+            this.weapon_panel.addControl(pushButton);
+    
+            var c = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
+            c.visibility = 0.1;
+            var pushButton = new MeshButton3D(c, "pushButton");
+            this.weapon_arrow!.parent = c;
+            this.weapon_panel.addControl(pushButton);
+            
+            var d = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
+            d.visibility = 0.1;
+            var pushButton = new MeshButton3D(d, "pushButton");
+            this.weapon_hatchet!.parent = d;
+            this.weapon_panel.addControl(pushButton);
+        }
+        // recalculate the position to put the weapon panel
+        var panel_position = this.xrCamera!.globalPosition.clone();
+        panel_position.addInPlace(new Vector3(0, 0, -this.weapon_panel_radius));
+        // within arm's reach
+        panel_position.addInPlace(new Vector3(0, 0, 1));
+        this.weapon_panel.position = panel_position;
+    }
 }
 /******* End of the Game class ******/   
 
