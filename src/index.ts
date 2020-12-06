@@ -16,9 +16,13 @@ import { Sound } from "@babylonjs/core/Audio/sound";
 import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
 import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
 import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh} from "@babylonjs/core";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer} from "@babylonjs/core";
 import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
+// Physics
+import * as Cannon from "cannon"
+import { CannonJSPlugin } from "@babylonjs/core/Physics/Plugins/cannonJSPlugin";
+import "@babylonjs/core/Physics/physicsEngineComponent";
 
 // Side effects
 import "@babylonjs/core/Helpers/sceneHelpers";
@@ -66,6 +70,8 @@ class Game
 
     private right_grip_transform : TransformNode | null;
     private weapon_panel_transform : TransformNode | null;
+
+    private is_bullet_exist : boolean | null;
 
     constructor()
     {
@@ -116,6 +122,8 @@ class Game
         this.weapon_panel_transform = null;
 
         this.weapon_in_hand = null;
+
+        this.is_bullet_exist = false;
     }
 
     start() : void 
@@ -216,6 +224,9 @@ class Game
         // Loads world, sound effects and weapon meshes
         this.loadAssets();
 
+        // Enable physics engine with no gravity
+        this.scene.enablePhysics(new Vector3(0, 0, 0), new CannonJSPlugin(undefined, undefined, Cannon));
+
         // Assign the left and right controllers to member variables
         xrHelper.input.onControllerAddedObservable.add((inputSource) => {
             if(inputSource.uniqueId.endsWith("right"))
@@ -262,11 +273,44 @@ class Game
     private onRightTrigger(component?: WebXRControllerComponent) {
         // What will happend depends on what's on hand
         if (component?.pressed) {
+            // this.fireRifle();
             if (this.weapon_in_hand == this.weapon_rifle) {
-                if (!this.sound_swoosh?.isPlaying) {
-                    this.sound_swoosh?.play();
-                }
+                this.fireRifle();
             }
+        }
+    }
+
+    private fireRifle() : void {
+        if (!this.is_bullet_exist) {
+            this.is_bullet_exist = true;
+            if (!this.sound_swoosh?.isPlaying) {
+                this.sound_swoosh?.play();
+            }
+
+            var bullet = MeshBuilder.CreateSphere("bullet", {diameter: 0.1}, this.scene);
+            bullet.position = this.weapon_rifle!.absolutePosition.clone();
+            bullet.physicsImpostor = new PhysicsImpostor(bullet, PhysicsImpostor.BoxImpostor, {mass: 0.1}, this.scene);
+            var dir = this.weapon_rifle!.forward.clone().normalize();
+            console.log(dir);
+            bullet?.physicsImpostor?.setLinearVelocity(dir.scale(200));
+            
+            // Rifle cool-down time
+            setAndStartTimer({
+                timeout: 20,
+                contextObservable: this.scene.onBeforeRenderObservable,
+                onEnded: () => {
+                    this.is_bullet_exist = false;
+                  },
+            });
+
+            // Dispose the bullet after long time
+            setAndStartTimer({
+                timeout: 2000,
+                contextObservable: this.scene.onBeforeRenderObservable,
+                onEnded: () => {
+                    bullet.dispose();
+                  },
+            });
         }
     }
 
@@ -322,7 +366,7 @@ class Game
 
         this.weapon_panel_transform!.position = panel_position;
 
-        this.weapon_panel!.position = new Vector3(0, 0, -this.weapon_panel_radius + 2);
+        this.weapon_panel!.position = new Vector3(0, 0, -this.weapon_panel_radius + 0.5);
         
         this.weapon_panel_transform!.rotationQuaternion =this.xrCamera!.rotationQuaternion.clone();
     }
