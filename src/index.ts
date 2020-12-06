@@ -5,7 +5,7 @@
 
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
-import { Vector3, Color3 } from "@babylonjs/core/Maths/math";
+import { Vector3, Color3, Quaternion } from "@babylonjs/core/Maths/math";
 import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
@@ -65,6 +65,7 @@ class Game
     private weapon_list : Array<TransformNode>;
 
     private right_grip_transform : TransformNode | null;
+    private weapon_panel_transform : TransformNode | null;
 
     constructor()
     {
@@ -112,6 +113,7 @@ class Game
         this.gui_manager = null;
 
         this.right_grip_transform = null;
+        this.weapon_panel_transform = null;
 
         this.weapon_in_hand = null;
     }
@@ -181,6 +183,8 @@ class Game
         xrHelper.pointerSelection.dispose();
 
         this.right_grip_transform = new TransformNode("right hand");
+        this.weapon_panel_transform = new TransformNode("weapon panel parent");
+        this.weapon_panel_transform.rotationQuaternion = new Quaternion();
 
         // This executes when the user enters or exits immersive mode
         xrHelper.enterExitUI.activeButtonChangedObservable.add((enterExit) => {
@@ -295,13 +299,32 @@ class Game
             if (component.pressed) {
                 if (this.weapon_panel==null) {
                     this.renderWeaponPanel();
+                    this.relocatePanel();
                 } else if (this.weapon_panel?.isVisible) {
                     this.setWeaponPanelVisibility(false);
                 } else if (!this.weapon_panel?.isVisible) {
                     this.setWeaponPanelVisibility(true);
+                    this.relocatePanel();
                 }
             }
         }
+    }
+
+    private relocatePanel() : void {
+        /* 
+           recalculate the rotation and posistion to always put panel
+           in front of camera
+        */
+
+        this.weapon_panel!.linkToTransformNode(this.weapon_panel_transform!);
+        
+        var panel_position = this.xrCamera!.globalPosition.clone();
+
+        this.weapon_panel_transform!.position = panel_position;
+
+        this.weapon_panel!.position = new Vector3(0, 0, -this.weapon_panel_radius + 2);
+        
+        this.weapon_panel_transform!.rotationQuaternion =this.xrCamera!.rotationQuaternion.clone();
     }
 
     private setWeaponPanelVisibility(b: boolean) : void {
@@ -315,6 +338,7 @@ class Game
     {
         if (this.weapon_panel == null) {
             this.weapon_panel = new CylinderPanel();
+
             this.gui_manager!.addControl(this.weapon_panel);
             this.weapon_panel.radius = this.weapon_panel_radius;
             this.weapon_panel.margin = 0.1;
@@ -346,12 +370,7 @@ class Game
             this.weapon_hatchet!.parent = d;
             this.weapon_panel.addControl(pushButton);
         }
-        // recalculate the position to put the weapon panel
-        var panel_position = this.xrCamera!.globalPosition.clone();
-        panel_position.addInPlace(new Vector3(0, 0, -this.weapon_panel_radius));
-        // within arm's reach
-        panel_position.addInPlace(new Vector3(0, 0, 1));
-        this.weapon_panel.position = panel_position;
+        this.relocatePanel();
     }
 
     private loadAssets() : void {
