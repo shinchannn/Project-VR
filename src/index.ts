@@ -73,6 +73,10 @@ class Game
 
     private is_bullet_exist : boolean | null;
 
+    private right_grip_prev_pos : Vector3;
+
+    private weapon_hatchet_velocity_factor : number;
+
     constructor()
     {
         // Get the canvas element 
@@ -124,6 +128,10 @@ class Game
         this.weapon_in_hand = null;
 
         this.is_bullet_exist = false;
+
+        this.right_grip_prev_pos = Vector3.Zero();
+
+        this.weapon_hatchet_velocity_factor = 20;
     }
 
     start() : void 
@@ -260,6 +268,11 @@ class Game
     private update() : void
     {
         this.processControllerInput();
+
+        // record right hand position from last frame
+        if (this.rightController && this.rightController.grip ) {
+            this.right_grip_prev_pos = this.rightController.grip.position.clone();
+        }
     }
 
     // Process event handlers for controller input
@@ -280,6 +293,52 @@ class Game
         }
     }
 
+    private onRightSqueeze(component?: WebXRControllerComponent) {
+        if (component?.changes.pressed) {
+            if (component?.pressed) {
+                this.findIntersectedWeapon();
+            } else {
+                if (this.weapon_in_hand == this.weapon_hatchet) {
+                    this.throwHatchet();
+                }
+                this.weapon_in_hand?.setParent(null);
+                this.weapon_in_hand = null;
+            }
+        }
+    }
+
+    private onLeftTrigger(component?: WebXRControllerComponent)
+    {
+        if (component?.changes.pressed) {
+            if (component.pressed) {
+                if (this.weapon_panel==null) {
+                    this.renderWeaponPanel();
+                    this.relocatePanel();
+                } else if (this.weapon_panel?.isVisible) {
+                    this.setWeaponPanelVisibility(false);
+                } else if (!this.weapon_panel?.isVisible) {
+                    this.setWeaponPanelVisibility(true);
+                    this.relocatePanel();
+                }
+            }
+        }
+    }
+
+    private throwHatchet() : void {
+        this.weapon_hatchet?.setParent(null);
+        var array = this.weapon_hatchet!.getChildMeshes();
+        for (let index = 0; index < array.length; index++) {
+            var element = array[index];
+            var prev_pos = element.absolutePosition;
+            element.parent = null;
+            element.position = prev_pos;
+            element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
+            var curr_pos = this.rightController!.grip!.position.clone();
+            var dir = curr_pos.subtract(this.right_grip_prev_pos!);
+            element._physicsImpostor!.setLinearVelocity(dir.scale(this.weapon_hatchet_velocity_factor));
+        }
+    }
+
     private fireRifle() : void {
         if (!this.is_bullet_exist) {
             this.is_bullet_exist = true;
@@ -292,7 +351,7 @@ class Game
             bullet.physicsImpostor = new PhysicsImpostor(bullet, PhysicsImpostor.BoxImpostor, {mass: 0.1}, this.scene);
             var dir = this.weapon_rifle!.forward.clone().normalize();
             console.log(dir);
-            bullet?.physicsImpostor?.setLinearVelocity(dir.scale(200));
+            bullet?.physicsImpostor?.setLinearVelocity(dir.scale(10));
             
             // Rifle cool-down time
             setAndStartTimer({
@@ -314,17 +373,6 @@ class Game
         }
     }
 
-    private onRightSqueeze(component?: WebXRControllerComponent) {
-        if (component?.changes.pressed) {
-            if (component?.pressed) {
-                this.findIntersectedWeapon();
-            } else {
-                this.weapon_in_hand?.setParent(null);
-                this.weapon_in_hand = null;
-            }
-        }
-    }
-
     private findIntersectedWeapon() : void {
         for (const weapon of this.weapon_list) {
             for (const mesh of weapon.getChildMeshes()) {
@@ -332,23 +380,6 @@ class Game
                     weapon.setParent(this.right_grip_transform);
                     this.weapon_in_hand = weapon;
                     return;
-                }
-            }
-        }
-    }
-
-    private onLeftTrigger(component?: WebXRControllerComponent)
-    {
-        if (component?.changes.pressed) {
-            if (component.pressed) {
-                if (this.weapon_panel==null) {
-                    this.renderWeaponPanel();
-                    this.relocatePanel();
-                } else if (this.weapon_panel?.isVisible) {
-                    this.setWeaponPanelVisibility(false);
-                } else if (!this.weapon_panel?.isVisible) {
-                    this.setWeaponPanelVisibility(true);
-                    this.relocatePanel();
                 }
             }
         }
@@ -503,8 +534,11 @@ class Game
                     return;
                 }
                 element.parent = this.weapon_hatchet;
+                element.scaling.scaleInPlace(this.weapon_hatchet_scale);
+                // element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
+                // element.physicsImpostor.sleep();
             });
-            this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
+            // this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
         };
 
         // This loads all the assets and displays a loading screen
