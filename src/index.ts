@@ -30,6 +30,7 @@ import "@babylonjs/inspector";
 import "@babylonjs/loaders/OBJ/objFileLoader";
 import "@babylonjs/loaders/OBJ/mtlFileLoader";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { ThinSprite } from "@babylonjs/core/Sprites/thinSprite";
 
 class Game 
 { 
@@ -76,6 +77,9 @@ class Game
     private right_grip_prev_pos : Vector3;
 
     private weapon_hatchet_velocity_factor : number;
+
+    private jetpack_equipped: boolean;
+    private jetpack_max_velocity: number;
 
     constructor()
     {
@@ -132,6 +136,9 @@ class Game
         this.right_grip_prev_pos = Vector3.Zero();
 
         this.weapon_hatchet_velocity_factor = 20;
+
+        this.jetpack_equipped = true;
+        this.jetpack_max_velocity = 3;
     }
 
     start() : void 
@@ -155,7 +162,7 @@ class Game
     private async createScene() 
     {
         // This creates and positions a first-person camera (non-mesh)
-        var camera = new UniversalCamera("camera1", new Vector3(-6.18, 2.03 + 1.6, 1.16), this.scene);
+        var camera = new UniversalCamera("camera1", new Vector3(-13.55, 1.6, 4.67), this.scene);
         camera.fov = 90 * Math.PI / 180;
         camera.minZ = .1;
         camera.maxZ = 100;
@@ -273,6 +280,10 @@ class Game
         if (this.rightController && this.rightController.grip ) {
             this.right_grip_prev_pos = this.rightController.grip.position.clone();
         }
+
+        if (this.jetpack_equipped) {
+            this.steerJetPack();
+        }
     }
 
     // Process event handlers for controller input
@@ -289,6 +300,10 @@ class Game
             // this.fireRifle();
             if (this.weapon_in_hand == this.weapon_rifle) {
                 this.fireRifle();
+            } else if (this.jetpack_equipped) {
+                var upwardVelocity = component.value * this.jetpack_max_velocity;
+                var moveDistance = (this.engine.getDeltaTime() / 1000) * upwardVelocity;
+                this.xrCamera!.position.addInPlace(new Vector3(0, moveDistance, 0));
             }
         }
     }
@@ -320,6 +335,14 @@ class Game
                     this.setWeaponPanelVisibility(true);
                     this.relocatePanel();
                 }
+            }
+        }
+
+        if (this.jetpack_equipped) {
+            if (component?.pressed) {
+                var downwardVelocity = component.value * this.jetpack_max_velocity * -1;
+                var moveDistance = (this.engine.getDeltaTime() / 1000) * downwardVelocity;
+                this.xrCamera!.position.addInPlace(new Vector3(0, moveDistance, 0));
             }
         }
     }
@@ -382,6 +405,69 @@ class Game
                     return;
                 }
             }
+        }
+    }
+
+    private steerJetPack() : void {
+        if (this.rightController && this.leftController) {
+            var totalMovementVector = new Vector3();
+
+            // Calculate component for movement in the left-right direction
+            var lrAngle = 0;
+            var lrCoefficient = 0;
+            var lrDirection = new Vector3();
+
+            // Find angle between xz plane and bimanual line
+            if (this.rightController!.grip!.position.y > this.leftController!.grip!.position.y) {
+                var h = this.leftController!.grip!.position.subtract(this.rightController!.grip!.position).length();
+                var o = this.rightController!.grip!.position.y - this.leftController!.grip!.position.y;
+                lrAngle = Math.sin(o / h);
+
+                lrDirection = this.leftController!.grip!.position.subtract(this.rightController!.grip!.position);
+                lrDirection.y = 0;
+                lrDirection.normalize();
+            } else {
+                var h = this.leftController!.grip!.position.subtract(this.rightController!.grip!.position).length();
+                var o = this.leftController!.grip!.position.y - this.rightController!.grip!.position.y;
+                lrAngle = Math.sin(o / h);
+
+                lrDirection = this.rightController!.grip!.position.subtract(this.leftController!.grip!.position);
+                lrDirection.y = 0;
+                lrDirection.normalize();
+            }
+
+            // 45 degree max angle
+            if (lrAngle > Math.PI/4) {
+                lrCoefficient = 1;
+            } else {
+                lrCoefficient = lrAngle / (Math.PI/4);
+            }
+
+            // Calculate component for movement in the forward-back direction
+            var fbAngle = 0;
+            var fbCoefficient = 0;
+            var fbDirection = new Vector3();
+            var midpoint = this.rightController!.grip!.position.add(this.leftController.grip!.position).scale(.5);
+
+            // Find angle between the line from midpoint to headset and the y axis
+            var hyp = this.xrCamera!.position.subtract(midpoint).length();
+            var opp = this.xrCamera!.position.subtract(new Vector3(midpoint.x, this.xrCamera!.position.y, midpoint.z)).length();
+            fbAngle = Math.sin(opp / hyp);
+
+            fbDirection = this.xrCamera!.position.subtract(midpoint);
+            fbDirection.y = 0;
+            fbDirection.normalize();
+
+            // 45 degree max angle
+            if (fbAngle > Math.PI/4) {
+                fbCoefficient = 1;
+            } else {
+                fbCoefficient = fbAngle / (Math.PI/4);
+            }
+
+            // Calculate total movement on the xz plane
+            totalMovementVector = (lrDirection.scale(lrCoefficient)).add(fbDirection.scale(fbCoefficient));
+            this.xrCamera!.position.addInPlace(totalMovementVector.scale(this.jetpack_max_velocity * this.engine.getDeltaTime() / 1000));
         }
     }
 
@@ -474,8 +560,11 @@ class Game
                     mesh.material = canyonMat;
                 }
             });
+
+            this.world?.scaling.scaleInPlace(2.5);
+            this.world?.position.addInPlace(new Vector3(0,-5.35,0));
         };
-        this.world.setEnabled(false);
+        //this.world.setEnabled(false);
 
         var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
         sound_swoosh_task.onSuccess = (task) => {
