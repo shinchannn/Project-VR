@@ -70,6 +70,7 @@ class Game
     private weapon_list : Array<TransformNode>;
 
     private right_grip_transform : TransformNode | null;
+    private left_grip_transform : TransformNode | null;
     private weapon_panel_transform : TransformNode | null;
 
     private is_bullet_exist : boolean | null;
@@ -127,6 +128,7 @@ class Game
         this.gui_manager = null;
 
         this.right_grip_transform = null;
+        this.left_grip_transform = null;
         this.weapon_panel_transform = null;
 
         this.weapon_in_hand = null;
@@ -137,7 +139,7 @@ class Game
 
         this.weapon_hatchet_velocity_factor = 20;
 
-        this.jetpack_equipped = true;
+        this.jetpack_equipped = false;
         this.jetpack_max_velocity = 3;
     }
 
@@ -206,6 +208,7 @@ class Game
         xrHelper.pointerSelection.dispose();
 
         this.right_grip_transform = new TransformNode("right hand");
+        this.left_grip_transform = new TransformNode("left hand");
         this.weapon_panel_transform = new TransformNode("weapon panel parent");
         this.weapon_panel_transform.rotationQuaternion = new Quaternion();
 
@@ -252,6 +255,7 @@ class Game
             else 
             {
                 this.leftController = inputSource;
+                this.left_grip_transform!.parent = this.leftController.grip!;
             }  
         });
 
@@ -289,6 +293,7 @@ class Game
     // Process event handlers for controller input
     private processControllerInput()
     {
+        this.onLeftSqueeze(this.leftController?.motionController?.getComponent("xr-standard-squeeze"));
         this.onLeftTrigger(this.leftController?.motionController?.getComponent("xr-standard-trigger"));
         this.onRightSqueeze(this.rightController?.motionController?.getComponent("xr-standard-squeeze"));
         this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
@@ -311,7 +316,7 @@ class Game
     private onRightSqueeze(component?: WebXRControllerComponent) {
         if (component?.changes.pressed) {
             if (component?.pressed) {
-                this.findIntersectedWeapon();
+                this.findIntersectedWeapon("right");
             } else {
                 if (this.weapon_in_hand == this.weapon_hatchet) {
                     this.throwHatchet();
@@ -343,6 +348,17 @@ class Game
                 var downwardVelocity = component.value * this.jetpack_max_velocity * -1;
                 var moveDistance = (this.engine.getDeltaTime() / 1000) * downwardVelocity;
                 this.xrCamera!.position.addInPlace(new Vector3(0, moveDistance, 0));
+            }
+        }
+    }
+
+    private onLeftSqueeze(component?: WebXRControllerComponent) {
+        if (component?.changes.pressed) {
+            if (component?.pressed) {
+                this.findIntersectedWeapon("left");
+            } else {
+                this.weapon_in_hand?.setParent(null);
+                this.weapon_in_hand = null;
             }
         }
     }
@@ -396,15 +412,39 @@ class Game
         }
     }
 
-    private findIntersectedWeapon() : void {
-        for (const weapon of this.weapon_list) {
-            for (const mesh of weapon.getChildMeshes()) {
-                if (this.rightController!.grip!.intersectsMesh(mesh)) {
-                    weapon.setParent(this.right_grip_transform);
-                    this.weapon_in_hand = weapon;
-                    return;
+    private findIntersectedWeapon(hand : string) : void {
+        if (hand == "right") {
+            for (const weapon of this.weapon_list) {
+                for (const mesh of weapon.getChildMeshes()) {
+                    if (this.rightController!.grip!.intersectsMesh(mesh)) {
+                        weapon.setParent(this.right_grip_transform);
+                        weapon.position = new Vector3(this.right_grip_transform?.position.x, this.right_grip_transform?.position.y, this.right_grip_transform?.position.z);
+                        weapon.rotation = new Vector3(this.right_grip_transform?.rotation.x, this.right_grip_transform?.rotation.y, this.right_grip_transform?.rotation.z);
+                        this.alignWeapon(weapon);
+                        // weapon.setParent(this.right_grip_transform);
+                        // weapon.parent = this.right_grip_transform;
+                        this.weapon_in_hand = weapon;
+                        return;
+                    }
                 }
             }
+        } else if (hand == "left") {
+            for (const weapon of this.weapon_list) {
+                for (const mesh of weapon.getChildMeshes()) {
+                    if (this.leftController!.grip!.intersectsMesh(mesh)) {
+                        weapon.setParent(this.left_grip_transform);
+                        // weapon.parent = this.left_grip_transform;
+                        this.weapon_in_hand = weapon;
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    private alignWeapon(weapon : TransformNode) {
+        if (weapon == this.weapon_archery) {
+            weapon.rotation.x += 60;
         }
     }
 
@@ -421,7 +461,7 @@ class Game
             if (this.rightController!.grip!.position.y > this.leftController!.grip!.position.y) {
                 var h = this.leftController!.grip!.position.subtract(this.rightController!.grip!.position).length();
                 var o = this.rightController!.grip!.position.y - this.leftController!.grip!.position.y;
-                lrAngle = Math.sin(o / h);
+                lrAngle = Math.asin(o / h);
 
                 lrDirection = this.leftController!.grip!.position.subtract(this.rightController!.grip!.position);
                 lrDirection.y = 0;
@@ -429,7 +469,7 @@ class Game
             } else {
                 var h = this.leftController!.grip!.position.subtract(this.rightController!.grip!.position).length();
                 var o = this.leftController!.grip!.position.y - this.rightController!.grip!.position.y;
-                lrAngle = Math.sin(o / h);
+                lrAngle = Math.asin(o / h);
 
                 lrDirection = this.rightController!.grip!.position.subtract(this.leftController!.grip!.position);
                 lrDirection.y = 0;
@@ -452,7 +492,7 @@ class Game
             // Find angle between the line from midpoint to headset and the y axis
             var hyp = this.xrCamera!.position.subtract(midpoint).length();
             var opp = this.xrCamera!.position.subtract(new Vector3(midpoint.x, this.xrCamera!.position.y, midpoint.z)).length();
-            fbAngle = Math.sin(opp / hyp);
+            fbAngle = Math.asin(opp / hyp);
 
             fbDirection = this.xrCamera!.position.subtract(midpoint);
             fbDirection.y = 0;
