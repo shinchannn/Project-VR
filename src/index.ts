@@ -16,7 +16,7 @@ import { Sound } from "@babylonjs/core/Audio/sound";
 import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
 import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
 import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer} from "@babylonjs/core";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh} from "@babylonjs/core";
 import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
 // Physics
@@ -56,6 +56,8 @@ class Game
     private weapon_rifle : TransformNode | null;
     private weapon_hatchet : TransformNode | null;
 
+    private target : TransformNode | null;
+
     private weapon_hatchet_scale : number;
     private weapon_archery_scale: number;
     private weapon_rifle_scale: number;
@@ -74,6 +76,8 @@ class Game
     private weapon_panel_transform : TransformNode | null;
 
     private is_bullet_exist : boolean | null;
+    private bullet_initial_velocity : number;
+    private bullet_mass : number;
 
     private right_grip_prev_pos : Vector3;
 
@@ -81,6 +85,12 @@ class Game
 
     private jetpack_equipped: boolean;
     private jetpack_max_velocity: number;
+
+    private target_scale : number;
+
+    private targets : Array<Mesh>;
+
+    private challenge_mode : boolean;
 
     constructor()
     {
@@ -98,7 +108,7 @@ class Game
         this.rightController = null;
 
         this.gameStarted = false;
-        this.gamePaused = true;
+        this.gamePaused = false;
 
         // World
         this.world = null;
@@ -134,13 +144,21 @@ class Game
         this.weapon_in_hand = null;
 
         this.is_bullet_exist = false;
+        this.bullet_initial_velocity = 500;
+        this.bullet_mass = 8/1000;  // in kg
 
         this.right_grip_prev_pos = Vector3.Zero();
 
-        this.weapon_hatchet_velocity_factor = 20;
+        this.weapon_hatchet_velocity_factor = 100;
 
         this.jetpack_equipped = false;
         this.jetpack_max_velocity = 3;
+
+        this.target = null;
+        this.target_scale = .2;
+
+        this.targets = [];
+        this.challenge_mode = true;
     }
 
     start() : void 
@@ -243,7 +261,7 @@ class Game
         this.loadAssets();
 
         // Enable physics engine with no gravity
-        this.scene.enablePhysics(new Vector3(0, 0, 0), new CannonJSPlugin(undefined, undefined, Cannon));
+        this.scene.enablePhysics(new Vector3(0, -9.8, 0), new CannonJSPlugin(undefined, undefined, Cannon));
 
         // Assign the left and right controllers to member variables
         xrHelper.input.onControllerAddedObservable.add((inputSource) => {
@@ -271,6 +289,35 @@ class Game
         this.weapon_list.push(this.weapon_arrow!);
         this.weapon_list.push(this.weapon_hatchet!);
         this.weapon_list.push(this.weapon_archery!);
+
+        // Create an example cube that flies towards the user
+        setInterval(() =>{ 
+            if (this.gamePaused || !this.challenge_mode) return;
+
+            console.log("generate target");
+            if (this.targets?.length >= 10) {
+                var x = this.targets.shift();
+                if (x?.isVisible) x?.dispose()
+            }
+
+            var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
+            a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
+            a.physicsImpostor?.wakeUp();
+        
+            var dir = this.xrCamera?.globalPosition.subtract(a.position);
+            dir!.y = 0;
+            dir?.normalize();
+
+            a.physicsImpostor?.setLinearVelocity(dir!.scale(2));
+            this.targets?.push(a);
+            console.log(dir);
+        }, 10000);
+
+        this.scene.onBeforeRenderObservable.add( () => {
+            this.targets.forEach(a => {
+                a.physicsImpostor?.applyForce(new Vector3(0, 9.9, 0), a.getAbsolutePosition());
+            });
+        });
 
         this.scene.debugLayer.show(); 
     }
@@ -364,6 +411,7 @@ class Game
     }
 
     private throwHatchet() : void {
+        var r = this.weapon_hatchet?.absoluteRotationQuaternion;
         this.weapon_hatchet?.setParent(null);
         var array = this.weapon_hatchet!.getChildMeshes();
         for (let index = 0; index < array.length; index++) {
@@ -374,41 +422,33 @@ class Game
             element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
             var curr_pos = this.rightController!.grip!.position.clone();
             var dir = curr_pos.subtract(this.right_grip_prev_pos!);
+            element.rotationQuaternion = r!;
             element._physicsImpostor!.setLinearVelocity(dir.scale(this.weapon_hatchet_velocity_factor));
         }
     }
 
     private fireRifle() : void {
-        if (!this.is_bullet_exist) {
-            this.is_bullet_exist = true;
-            if (!this.sound_swoosh?.isPlaying) {
-                this.sound_swoosh?.play();
+        if (!this.sound_swoosh?.isPlaying) {
+            this.sound_swoosh?.play();
+        }
+        // var laserPoints = [];
+        // laserPoints.push(this.weapon_rifle!.absolutePosition.clone());
+        // laserPoints.push(this.weapon_rifle!.absolutePosition.add(this.weapon_rifle!.forward.normalizeToNew().scale(10)));
+        // Create a laser pointer and make sure it is not pickable
+        // var laserPointer = MeshBuilder.CreateLines("laserPointer", {points: laserPoints}, this.scene);
+        // laserPointer.color = Color3.Blue();
+        // laserPointer.alpha = .5;
+        // laserPointer.isPickable = false;
+        var ray = new Ray(this.weapon_rifle!.absolutePosition.clone(), this.weapon_rifle!.forward.normalizeToNew(), 10);
+        var pickInfo = this.scene.pickWithRay(ray);
+
+        // If an object was hit, select it
+        if(pickInfo?.hit)
+        {
+            var hit_object = pickInfo!.pickedMesh;
+            if (hit_object?.name.startsWith("target")) {
+                hit_object.dispose();
             }
-
-            var bullet = MeshBuilder.CreateSphere("bullet", {diameter: 0.1}, this.scene);
-            bullet.position = this.weapon_rifle!.absolutePosition.clone();
-            bullet.physicsImpostor = new PhysicsImpostor(bullet, PhysicsImpostor.BoxImpostor, {mass: 0.1}, this.scene);
-            var dir = this.weapon_rifle!.forward.clone().normalize();
-            console.log(dir);
-            bullet?.physicsImpostor?.setLinearVelocity(dir.scale(10));
-            
-            // Rifle cool-down time
-            setAndStartTimer({
-                timeout: 20,
-                contextObservable: this.scene.onBeforeRenderObservable,
-                onEnded: () => {
-                    this.is_bullet_exist = false;
-                  },
-            });
-
-            // Dispose the bullet after long time
-            setAndStartTimer({
-                timeout: 2000,
-                contextObservable: this.scene.onBeforeRenderObservable,
-                onEnded: () => {
-                    bullet.dispose();
-                  },
-            });
         }
     }
 
@@ -506,7 +546,7 @@ class Game
             }
 
             // Calculate total movement on the xz plane
-            totalMovementVector = (lrDirection.scale(lrCoefficient)).add(fbDirection.scale(fbCoefficient));
+            totalMovementVector = (fbDirection.scale(fbCoefficient));
             this.xrCamera!.position.addInPlace(totalMovementVector.scale(this.jetpack_max_velocity * this.engine.getDeltaTime() / 1000));
         }
     }
@@ -618,6 +658,7 @@ class Game
         weapon_archery_task.onSuccess = (task) => {
             task.loadedMeshes.forEach(element => {
                 element.parent = this.weapon_archery;
+                element.isPickable = false;
                 // for some unknown reason, skip nodes called "default"
                 if (element.name == "default") {
                     element.dispose();
@@ -635,6 +676,7 @@ class Game
                     element.dispose();
                     return;
                 }
+                element.isPickable = false;
                 element.parent = this.weapon_arrow;
             });
             this.weapon_arrow?.scaling.scaleInPlace(this.weapon_arrow_scale);
@@ -648,6 +690,7 @@ class Game
                     element.dispose();
                     return;
                 }
+                element.isPickable = false;
                 element.parent = this.weapon_rifle;
             });
             this.weapon_rifle?.scaling.scaleInPlace(this.weapon_rifle_scale);
@@ -662,6 +705,7 @@ class Game
                     element.dispose();
                     return;
                 }
+                element.isPickable = false;
                 element.parent = this.weapon_hatchet;
                 element.scaling.scaleInPlace(this.weapon_hatchet_scale);
                 // element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
@@ -669,6 +713,15 @@ class Game
             });
             // this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
         };
+
+        this.target = new TransformNode("target", this.scene);
+        var target_task = assetsManager.addMeshTask("target", "", "assets/models/", "archery-target.obj");
+        target_task.onSuccess = (task) => {
+            task.loadedMeshes.forEach(element => {
+                element.parent = this.target;
+                element.scaling.scaleInPlace(this.target_scale);
+            });
+        }
 
         // This loads all the assets and displays a loading screen
         assetsManager.load();
