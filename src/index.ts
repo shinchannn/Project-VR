@@ -459,10 +459,7 @@ class Game
                     if (this.rightController!.grip!.intersectsMesh(mesh)) {
                         weapon.setParent(this.right_grip_transform);
                         weapon.position = new Vector3(this.right_grip_transform?.position.x, this.right_grip_transform?.position.y, this.right_grip_transform?.position.z);
-                        weapon.rotation = new Vector3(this.right_grip_transform?.rotation.x, this.right_grip_transform?.rotation.y, this.right_grip_transform?.rotation.z);
-                        this.alignWeapon(weapon);
-                        // weapon.setParent(this.right_grip_transform);
-                        // weapon.parent = this.right_grip_transform;
+                        this.alignWeapon(weapon, hand);
                         this.weapon_in_hand = weapon;
                         return;
                     }
@@ -473,7 +470,8 @@ class Game
                 for (const mesh of weapon.getChildMeshes()) {
                     if (this.leftController!.grip!.intersectsMesh(mesh)) {
                         weapon.setParent(this.left_grip_transform);
-                        // weapon.parent = this.left_grip_transform;
+                        weapon.position = new Vector3(this.left_grip_transform?.position.x, this.left_grip_transform?.position.y, this.left_grip_transform?.position.z);
+                        this.alignWeapon(weapon, hand);
                         this.weapon_in_hand = weapon;
                         return;
                     }
@@ -482,9 +480,15 @@ class Game
         }
     }
 
-    private alignWeapon(weapon : TransformNode) {
-        if (weapon == this.weapon_archery) {
-            weapon.rotation.x += 60;
+    private alignWeapon(weapon : TransformNode, hand : string) {
+        if (hand == "right") {
+            if (weapon == this.weapon_archery) {
+                weapon.rotation = new Vector3(this.right_grip_transform!.rotation.x, this.right_grip_transform!.rotation.y + Math.PI/2, this.right_grip_transform!.rotation.z+Math.PI/2);
+            }
+        } else if (hand == "left") {
+            if (weapon == this.weapon_archery) {
+                weapon.rotation = new Vector3(this.left_grip_transform!.rotation.x, this.left_grip_transform!.rotation.y + Math.PI/2, this.left_grip_transform!.rotation.z-Math.PI/2);
+            }
         }
     }
 
