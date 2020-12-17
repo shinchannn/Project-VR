@@ -98,6 +98,8 @@ class Game
 
     private challenge_mode : boolean;
 
+    private weapon_arrow_mesh: Mesh | null;
+
     constructor()
     {
         // Get the canvas element 
@@ -173,6 +175,8 @@ class Game
 
         this.targets = [];
         this.challenge_mode = true;
+
+        this.weapon_arrow_mesh = null;
     }
 
     start() : void 
@@ -275,7 +279,8 @@ class Game
         this.loadAssets();
 
         // Enable physics engine with no gravity
-        this.scene.enablePhysics(new Vector3(0, -9.8, 0), new CannonJSPlugin(undefined, undefined, Cannon));
+        // this.scene.enablePhysics(new Vector3(0, -9.8, 0), new CannonJSPlugin(undefined, undefined, Cannon));
+        this.scene.enablePhysics(new Vector3(0, -0.1, 0), new CannonJSPlugin(undefined, undefined, Cannon));
 
         // Assign the left and right controllers to member variables
         xrHelper.input.onControllerAddedObservable.add((inputSource) => {
@@ -510,22 +515,25 @@ class Game
     }
 
     private shootArrow(hand : string) {
-        this.weapon_arrow?.setParent(null);
+        var arrow_mesh = this.weapon_arrow!.getChildMeshes()[0];
+        var pos = arrow_mesh.getAbsolutePosition().clone();
+        var dir = this.leftController?.pointer.absolutePosition.subtract(this.rightController!.pointer.absolutePosition);
+        dir?.normalize();
+        var rotation_q = arrow_mesh.absoluteRotationQuaternion.clone();
+
+        // this.weapon_arrow?.setParent(null);
         this.arrow_notched = false;
         if (hand == "right") {
             this.weapon_in_rightHand = null;
         } else if (hand == "left") {
             this.weapon_in_leftHand = null;
         }
-        var array = this.weapon_arrow!.getChildMeshes();
-        for (let index = 0; index < array.length; index++) {
-            var element = array[index];
-            element.parent = null;
-            element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: .5}, this.scene);
-            if (this.leftController?.pointer) {
-                element.physicsImpostor!.setLinearVelocity(this.leftController.pointer.forward.scale(this.arrow_velocity*this.string_pullback));
-            }
-        }
+
+        arrow_mesh.parent = null;
+        arrow_mesh.position = pos;
+        arrow_mesh.rotationQuaternion = rotation_q;
+        arrow_mesh.physicsImpostor = new PhysicsImpostor(arrow_mesh, PhysicsImpostor.BoxImpostor, {mass: .5}, this.scene);
+        arrow_mesh.physicsImpostor!.setLinearVelocity(dir!.scale(this.arrow_velocity*this.string_pullback));
     }
 
     private throwHatchet() : void {
@@ -793,15 +801,10 @@ class Game
         this.weapon_arrow = new TransformNode("weapon_arrow", this.scene);
         var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "arrow.obj");
         weapon_arrow_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach(element => {
-                if (element.name == "default") {
-                    element.dispose();
-                    return;
-                }
-                element.isPickable = false;
-                element.parent = this.weapon_arrow;
-            });
-            this.weapon_arrow?.scaling.scaleInPlace(this.weapon_arrow_scale);
+            this.weapon_arrow_mesh = Mesh.MergeMeshes(task.loadedMeshes as Mesh[]);
+            this.weapon_arrow_mesh!.isPickable = false;
+            this.weapon_arrow_mesh!.parent = this.weapon_arrow;
+            this.weapon_arrow_mesh!.scaling.scaleInPlace(this.weapon_arrow_scale);
         };
 
         this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
