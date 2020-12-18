@@ -462,6 +462,7 @@ class Game
 
     private grabArrow(hand : string) : void {
         if (this.weapon_arrow) {
+            this.weapon_arrow.setEnabled(true);
             if (hand == "right") {
                 this.arrow_notched = false;
                 this.weapon_arrow.setParent(this.right_grip_transform);
@@ -535,28 +536,31 @@ class Game
             this.weapon_in_leftHand = null;
         }
 
-        arrow_mesh.parent = null;
-        arrow_mesh.position = pos;
-        arrow_mesh.rotationQuaternion = rotation_q;
-        arrow_mesh.physicsImpostor = new PhysicsImpostor(arrow_mesh, PhysicsImpostor.BoxImpostor, {mass: .5}, this.scene);
-        arrow_mesh.physicsImpostor!.setLinearVelocity(dir!.scale(this.arrow_velocity*this.string_pullback));
+        var instanceArrow = new InstancedMesh("shooted arrow", arrow_mesh as Mesh);
+        instanceArrow.parent = null;
+        instanceArrow.position = pos;
+        instanceArrow.rotationQuaternion = rotation_q;
+        instanceArrow.physicsImpostor = new PhysicsImpostor(instanceArrow, PhysicsImpostor.BoxImpostor, {mass: .5}, this.scene);
+        instanceArrow.physicsImpostor!.setLinearVelocity(dir!.scale(this.arrow_velocity*this.string_pullback));
+        
+        this.weapon_arrow?.setEnabled(false);
     }
 
     private throwHatchet() : void {
         var r = this.weapon_hatchet?.absoluteRotationQuaternion;
         this.weapon_hatchet?.setParent(null);
-        var array = this.weapon_hatchet!.getChildMeshes();
-        for (let index = 0; index < array.length; index++) {
-            var element = array[index];
-            var prev_pos = element.absolutePosition;
-            element.parent = null;
-            element.position = prev_pos;
-            element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
-            var curr_pos = this.rightController!.grip!.position.clone();
-            var dir = curr_pos.subtract(this.right_grip_prev_pos!);
-            element.rotationQuaternion = r!;
-            element._physicsImpostor!.setLinearVelocity(dir.scale(this.weapon_hatchet_velocity_factor));
-        }
+        var hatchet_mesh = this.weapon_hatchet!.getChildMeshes()[0];
+        var prev_pos = hatchet_mesh.absolutePosition;
+        var curr_pos = this.rightController!.grip!.position.clone();
+        var dir = curr_pos.subtract(this.right_grip_prev_pos!);
+        hatchet_mesh.parent = null;
+        hatchet_mesh.position = prev_pos;
+        hatchet_mesh.physicsImpostor = new PhysicsImpostor(hatchet_mesh, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
+        hatchet_mesh.rotationQuaternion = r!;
+        hatchet_mesh._physicsImpostor!.setLinearVelocity(dir.scale(this.weapon_hatchet_velocity_factor));
+        var upperArmLength = 0.3;
+        
+        hatchet_mesh.physicsImpostor!.setAngularVelocity(dir.scale(10/upperArmLength)); 
     }
 
     private fireRifle() : void {
