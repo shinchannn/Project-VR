@@ -100,6 +100,10 @@ class Game
 
     private weapon_arrow_mesh: Mesh | null;
 
+    // Data structure for VATS
+    private targets_prev_velocity : Map<Mesh, Vector3>;
+    private time_slow_factor : number;
+
     constructor()
     {
         // Get the canvas element 
@@ -177,6 +181,9 @@ class Game
         this.challenge_mode = true;
 
         this.weapon_arrow_mesh = null;
+        
+        this.targets_prev_velocity = new Map<Mesh, Vector3>();
+        this.time_slow_factor = .5;
     }
 
     start() : void 
@@ -369,6 +376,26 @@ class Game
         this.onLeftTrigger(this.leftController?.motionController?.getComponent("xr-standard-trigger"));
         this.onRightSqueeze(this.rightController?.motionController?.getComponent("xr-standard-squeeze"));
         this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
+        this.onLeftX(this.leftController?.motionController?.getComponent("x-button"));
+    }
+
+    private onLeftX(component?: WebXRControllerComponent) {  
+        // make all targets slow down
+        if(component?.changes.pressed) {
+            if(component?.pressed) {
+                this.targets.forEach(t => {
+                    var v = t.physicsImpostor!.getLinearVelocity()!;
+                    this.targets_prev_velocity.set(t, v);
+                    t.physicsImpostor?.setLinearVelocity(v.scale(this.time_slow_factor));
+                });
+            } else {
+                this.targets.forEach(t => {
+                    var v = this.targets_prev_velocity.get(t);
+                    t.physicsImpostor?.setLinearVelocity(v!);
+                });
+                this.targets_prev_velocity.clear();  // clear the map
+            }
+        }  
     }
 
     private onRightTrigger(component?: WebXRControllerComponent) {
@@ -407,6 +434,8 @@ class Game
             }
         }
     }
+
+    
 
     private onLeftTrigger(component?: WebXRControllerComponent)
     {
