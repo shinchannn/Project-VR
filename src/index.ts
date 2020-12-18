@@ -81,10 +81,6 @@ class Game
     private string_pullback : number;
     private arrow_velocity : number;
 
-    private is_bullet_exist : boolean | null;
-    private bullet_initial_velocity : number;
-    private bullet_mass : number;
-
     private right_grip_prev_pos : Vector3;
 
     private weapon_hatchet_velocity_factor : number;
@@ -92,17 +88,19 @@ class Game
     private jetpack_equipped: boolean;
     private jetpack_max_velocity: number;
 
-    private target_scale : number;
-
-    private targets : Array<Mesh>;
-
     private challenge_mode : boolean;
 
     private weapon_arrow_mesh: Mesh | null;
+    // Targets parameters
+    private target_scale : number;
+    private targets : Array<Mesh>;
+    private target_initial_pos : Vector3;
 
     // Data structure for VATS
     private targets_prev_velocity : Map<Mesh, Vector3>;
     private time_slow_factor : number;
+    private target_initial_velocity: number;
+    private in_slow_time: boolean;
 
     constructor()
     {
@@ -159,10 +157,6 @@ class Game
         this.weapon_in_rightHand = null;
         this.weapon_in_leftHand = null;
 
-        this.is_bullet_exist = false;
-        this.bullet_initial_velocity = 500;
-        this.bullet_mass = 8/1000;  // in kg
-
         this.arrow_notched = false;
         this.string_pullback = 0;
         this.arrow_velocity = 100;
@@ -176,14 +170,17 @@ class Game
 
         this.target = null;
         this.target_scale = .2;
-
+        this.target_initial_pos = new Vector3(3, 1.6, 10);
         this.targets = [];
+        this.target_initial_velocity = 3;
         this.challenge_mode = true;
 
         this.weapon_arrow_mesh = null;
         
         this.targets_prev_velocity = new Map<Mesh, Vector3>();
         this.time_slow_factor = .5;
+        this.in_slow_time = false;
+
     }
 
     start() : void 
@@ -215,10 +212,10 @@ class Game
         // This attaches the camera to the canvas
         camera.attachControl(this.canvas, true);
 
-       // Create a point light
-       var pointLight = new PointLight("pointLight", new Vector3(0, 2.5, 0), this.scene);
-       pointLight.intensity = 1.0;
-       pointLight.diffuse = new Color3(.25, .25, .25);
+        // Create a point light
+        var pointLight = new PointLight("pointLight", new Vector3(0, 2.5, 0), this.scene);
+        pointLight.intensity = 1.0;
+        pointLight.diffuse = new Color3(.25, .25, .25);
 
         var light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene);
 
@@ -286,8 +283,7 @@ class Game
         this.loadAssets();
 
         // Enable physics engine with no gravity
-        // this.scene.enablePhysics(new Vector3(0, -9.8, 0), new CannonJSPlugin(undefined, undefined, Cannon));
-        this.scene.enablePhysics(new Vector3(0, -0.1, 0), new CannonJSPlugin(undefined, undefined, Cannon));
+        this.scene.enablePhysics(new Vector3(0, -9.8, 0), new CannonJSPlugin(undefined, undefined, Cannon));
 
         // Assign the left and right controllers to member variables
         xrHelper.input.onControllerAddedObservable.add((inputSource) => {
@@ -316,34 +312,8 @@ class Game
         this.weapon_list.push(this.weapon_hatchet!);
         this.weapon_list.push(this.weapon_archery!);
 
-        // Create an example cube that flies towards the user
-        setInterval(() =>{ 
-            if (this.gamePaused || !this.challenge_mode) return;
-
-            console.log("generate target");
-            if (this.targets?.length >= 10) {
-                var x = this.targets.shift();
-                if (x?.isVisible) x?.dispose()
-            }
-
-            var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
-            a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
-            a.physicsImpostor?.wakeUp();
-        
-            var dir = this.xrCamera?.globalPosition.subtract(a.position);
-            dir!.y = 0;
-            dir?.normalize();
-
-            a.physicsImpostor?.setLinearVelocity(dir!.scale(2));
-            this.targets?.push(a);
-            console.log(dir);
-        }, 10000);
-
-        this.scene.onBeforeRenderObservable.add( () => {
-            this.targets.forEach(a => {
-                a.physicsImpostor?.applyForce(new Vector3(0, 9.9, 0), a.getAbsolutePosition());
-            });
-        });
+        // Create an example target that flies towards the user
+        setInterval(() => this.generateTarget(), 5000);
 
         this.scene.debugLayer.show(); 
     }
@@ -367,6 +337,11 @@ class Game
         } else {
             this.pullBowString();
         }
+
+        // apply a counter force to cancel gravity
+        this.targets.forEach(t => {
+            t.physicsImpostor?.applyForce(new Vector3(0, 9.8, 0), t.getAbsolutePosition());
+        });
     }
 
     // Process event handlers for controller input
@@ -383,6 +358,7 @@ class Game
         // make all targets slow down
         if(component?.changes.pressed) {
             if(component?.pressed) {
+                this.in_slow_time = true;
                 this.targets.forEach(t => {
                     var v = t.physicsImpostor!.getLinearVelocity()!;
                     this.targets_prev_velocity.set(t, v);
@@ -394,6 +370,7 @@ class Game
                     t.physicsImpostor?.setLinearVelocity(v!);
                 });
                 this.targets_prev_velocity.clear();  // clear the map
+                this.in_slow_time = false;
             }
         }  
     }
@@ -774,6 +751,7 @@ class Game
     }
 
     private loadAssets() : void {
+        var pos = MeshBuilder.CreateBox("box", {size:1}, this.scene);
         // The assets manager can be used to load multiple assets
         var assetsManager = new AssetsManager(this.scene);
         this.world = new TransformNode("world", this.scene);
@@ -879,6 +857,38 @@ class Game
 
         // This loads all the assets and displays a loading screen
         assetsManager.load();
+    }
+
+
+    private generateTarget() : void {
+        if (this.gamePaused || !this.challenge_mode) return;
+
+        console.log("generate target");
+        if (this.targets?.length >= 10) {
+            var x = this.targets.shift();
+            if (x?.isVisible) x?.dispose()
+        }
+
+        var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
+        a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
+        a.physicsImpostor?.wakeUp();
+        a.position = this.target_initial_pos.clone();
+        var shift = new Vector3(2*Math.random() - 1, 2*Math.random() - 1, 2*Math.random() - 1);
+        a.position.addInPlace(shift);
+    
+        var dir = this.xrCamera?.globalPosition.subtract(a.position);
+        dir!.y = 0;
+        dir?.normalize();
+
+        // if a target is created when VATS is on, 
+        // store its initial velocity in map and scale it
+        var v = dir!.scale(this.target_initial_velocity);
+        if (this.in_slow_time) {
+            this.targets_prev_velocity.set(a, v);
+            v = v.scale(this.time_slow_factor);
+        }
+        a.physicsImpostor?.setLinearVelocity(v);
+        this.targets?.push(a);
     }
 }
 /******* End of the Game class ******/   
