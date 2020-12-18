@@ -16,7 +16,7 @@ import { Sound } from "@babylonjs/core/Audio/sound";
 import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
 import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
 import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh} from "@babylonjs/core";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh, ActionManager, ExecuteCodeAction} from "@babylonjs/core";
 import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
 // Physics
@@ -732,12 +732,13 @@ class Game
             this.weapon_panel.radius = this.weapon_panel_radius;
             this.weapon_panel.margin = .05;
             // this.weapon_panel.blockLayout = true;
-            this.weapon_panel.rows = 2;
+            this.weapon_panel.rows = 1;
     
             var size_button = new Vector3(2, .1, 2);
             var scale = .2;
 
             size_button.scaleInPlace(scale);
+
             var a = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z})
             a.visibility = .1;
             var pushButton = new MeshButton3D(a, "pushButton");
@@ -751,21 +752,12 @@ class Game
             var pushButton = new MeshButton3D(b, "pushButton");
             this.weapon_archery!.parent = b;
             this.weapon_archery?.scaling.scaleInPlace(scale);
-
             this.weapon_panel.addControl(pushButton);
             
             var c = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z});
             c.visibility = .1;
             var pushButton = new MeshButton3D(c, "pushButton");
-            this.weapon_arrow!.parent = c;
-            this.weapon_arrow!.rotation.y += Math.PI/2;
-            this.weapon_arrow?.scaling.scaleInPlace(scale);
-            this.weapon_panel.addControl(pushButton);
-            
-            var d = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z});
-            d.visibility = .1;
-            var pushButton = new MeshButton3D(d, "pushButton");
-            this.weapon_hatchet!.parent = d;
+            this.weapon_hatchet!.parent = c;
             this.weapon_hatchet!.rotation.y += Math.PI/2;
             this.weapon_hatchet?.scaling.scaleInPlace(scale);
             this.weapon_panel.addControl(pushButton);
@@ -866,9 +858,6 @@ class Game
                 }
                 element.isPickable = false;
                 element.parent = this.weapon_hatchet;
-                // element.scaling.scaleInPlace(this.weapon_hatchet_scale);
-                // element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
-                // element.physicsImpostor.sleep();
             });
             this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
         };
