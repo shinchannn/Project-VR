@@ -16,7 +16,7 @@ import { Sound } from "@babylonjs/core/Audio/sound";
 import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
 import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
 import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh, ActionManager, ExecuteCodeAction} from "@babylonjs/core";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh, ActionManager, ExecuteCodeAction, IPhysicsEnabledObject} from "@babylonjs/core";
 import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
 // Physics
@@ -986,25 +986,31 @@ class Game
         }
 
         var a = MeshBuilder.CreateSphere("target", {diameter: .4}, this.scene);
-        a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
-        a.physicsImpostor?.wakeUp();
-        a.position = this.target_initial_pos.clone();
-        var shift = new Vector3(2*Math.random() - 1, 2*Math.random() - 1, 2*Math.random() - 1);
-        a.position.addInPlace(shift);
+        var b = MeshBuilder.CreateBox("target_top", {height:0.5, width:0.1, depth:0.1});
+        var c = MeshBuilder.CreateBox("target_bottom", {height:0.5, width:0.2, depth:0.1});
+        var target = Mesh.MergeMeshes([a,b,c]);
+        if (target) {
+            target.physicsImpostor = new PhysicsImpostor(target as IPhysicsEnabledObject, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
+            target.physicsImpostor?.wakeUp();
+            target.position = this.target_initial_pos.clone();
+            var shift = new Vector3(2*Math.random() - 1, 2*Math.random() - 1, 2*Math.random() - 1);
+            target.position.addInPlace(shift);
+        
     
-        var dir = this.xrCamera?.globalPosition.subtract(a.position);
-        dir!.y = 0;
-        dir?.normalize();
+            var dir = this.xrCamera?.globalPosition.subtract(target.position);
+            dir!.y = 0;
+            dir?.normalize();
 
-        // if a target is created when VATS is on, 
-        // store its initial velocity in map and scale it
-        var v = dir!.scale(this.target_initial_velocity);
-        if (this.in_slow_time) {
-            this.targets_velocity_before_VATS.set(a, v);
-            v = v.scale(this.time_slow_factor);
+            // if a target is created when VATS is on, 
+            // store its initial velocity in map and scale it
+            var v = dir!.scale(this.target_initial_velocity);
+            if (this.in_slow_time) {
+                this.targets_velocity_before_VATS.set(target, v);
+                v = v.scale(this.time_slow_factor);
+            }
+            target.physicsImpostor?.setLinearVelocity(v);
+            this.targets?.push(target);
         }
-        a.physicsImpostor?.setLinearVelocity(v);
-        this.targets?.push(a);
     }
 }
 /******* End of the Game class ******/   
