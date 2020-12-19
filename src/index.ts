@@ -149,7 +149,7 @@ class Game
         // scale factors
         this.weapon_hatchet_scale = .05;
         this.weapon_archery_scale = .01;
-        this.weapon_rifle_scale = .2;
+        this.weapon_rifle_scale = .115;
         this.weapon_arrow_scale = .07;
 
         // Sound effects
@@ -382,6 +382,19 @@ class Game
         this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
         this.onLeftY(this.leftController?.motionController?.getComponent("y-button"));
         this.onLeftX(this.leftController?.motionController?.getComponent("x-button"));
+        this.onRightA(this.rightController?.motionController?.getComponent("a-button"));
+    }
+
+    private onRightA(component?: WebXRControllerComponent) {
+        if (component?.changes.pressed) {
+            if (component?.pressed) {
+                if (this.jetpack_equipped) {
+                    this.jetpack_equipped = false;
+                } else {
+                    this.jetpack_equipped = true;
+                }
+             }
+        }
     }
 
     private onLeftY(component?: WebXRControllerComponent)
@@ -691,10 +704,14 @@ class Game
         if (hand == "right") {
             if (weapon == this.weapon_archery) {
                 weapon.rotation = new Vector3(this.right_grip_transform!.rotation.x, this.right_grip_transform!.rotation.y + Math.PI/2, this.right_grip_transform!.rotation.z+Math.PI/2);
+            } else if (weapon == this.weapon_rifle) {
+                weapon.rotation = new Vector3(this.right_grip_transform!.position.x+Math.PI/2, this.right_grip_transform!.position.y, this.right_grip_transform!.position.z);
             }
         } else if (hand == "left") {
             if (weapon == this.weapon_archery) {
                 weapon.rotation = new Vector3(this.left_grip_transform!.rotation.x, this.left_grip_transform!.rotation.y + Math.PI/2, this.left_grip_transform!.rotation.z+Math.PI/2);
+            } else if (weapon == this.weapon_rifle) {
+                weapon.rotation = new Vector3(this.left_grip_transform!.position.x+Math.PI/2, this.left_grip_transform!.position.y, this.left_grip_transform!.position.z);
             }
         }
     }
@@ -968,7 +985,7 @@ class Game
             if (x?.isVisible) x?.dispose()
         }
 
-        var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
+        var a = MeshBuilder.CreateSphere("target", {diameter: .4}, this.scene);
         a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
         a.physicsImpostor?.wakeUp();
         a.position = this.target_initial_pos.clone();
