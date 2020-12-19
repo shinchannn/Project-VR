@@ -79,10 +79,7 @@ class Game
 
     private arrow_notched : boolean;
     private string_pullback : number;
-
-    private is_bullet_exist : boolean | null;
-    private bullet_initial_velocity : number;
-    private bullet_mass : number;
+    private arrow_velocity : number;
 
     private right_grip_prev_pos : Vector3;
 
@@ -91,11 +88,19 @@ class Game
     private jetpack_equipped: boolean;
     private jetpack_max_velocity: number;
 
-    private target_scale : number;
-
-    private targets : Array<Mesh>;
-
     private challenge_mode : boolean;
+
+    private weapon_arrow_mesh: Mesh | null;
+    // Targets parameters
+    private target_scale : number;
+    private targets : Array<Mesh>;
+    private target_initial_pos : Vector3;
+
+    // Data structure for VATS
+    private targets_prev_velocity : Map<Mesh, Vector3>;
+    private time_slow_factor : number;
+    private target_initial_velocity: number;
+    private in_slow_time: boolean;
 
     constructor()
     {
@@ -152,12 +157,9 @@ class Game
         this.weapon_in_rightHand = null;
         this.weapon_in_leftHand = null;
 
-        this.is_bullet_exist = false;
-        this.bullet_initial_velocity = 500;
-        this.bullet_mass = 8/1000;  // in kg
-
         this.arrow_notched = false;
         this.string_pullback = 0;
+        this.arrow_velocity = 100;
 
         this.right_grip_prev_pos = Vector3.Zero();
 
@@ -168,9 +170,17 @@ class Game
 
         this.target = null;
         this.target_scale = .2;
-
+        this.target_initial_pos = new Vector3(3, 1.6, 10);
         this.targets = [];
+        this.target_initial_velocity = 3;
         this.challenge_mode = true;
+
+        this.weapon_arrow_mesh = null;
+        
+        this.targets_prev_velocity = new Map<Mesh, Vector3>();
+        this.time_slow_factor = .5;
+        this.in_slow_time = false;
+
     }
 
     start() : void 
@@ -202,10 +212,10 @@ class Game
         // This attaches the camera to the canvas
         camera.attachControl(this.canvas, true);
 
-       // Create a point light
-       var pointLight = new PointLight("pointLight", new Vector3(0, 2.5, 0), this.scene);
-       pointLight.intensity = 1.0;
-       pointLight.diffuse = new Color3(.25, .25, .25);
+        // Create a point light
+        var pointLight = new PointLight("pointLight", new Vector3(0, 2.5, 0), this.scene);
+        pointLight.intensity = 1.0;
+        pointLight.diffuse = new Color3(.25, .25, .25);
 
         var light = new HemisphericLight("light", new Vector3(0, 1, 0), this.scene);
 
@@ -302,34 +312,8 @@ class Game
         this.weapon_list.push(this.weapon_hatchet!);
         this.weapon_list.push(this.weapon_archery!);
 
-        // Create an example cube that flies towards the user
-        setInterval(() =>{ 
-            if (this.gamePaused || !this.challenge_mode) return;
-
-            console.log("generate target");
-            if (this.targets?.length >= 10) {
-                var x = this.targets.shift();
-                if (x?.isVisible) x?.dispose()
-            }
-
-            var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
-            a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
-            a.physicsImpostor?.wakeUp();
-        
-            var dir = this.xrCamera?.globalPosition.subtract(a.position);
-            dir!.y = 0;
-            dir?.normalize();
-
-            a.physicsImpostor?.setLinearVelocity(dir!.scale(2));
-            this.targets?.push(a);
-            console.log(dir);
-        }, 10000);
-
-        this.scene.onBeforeRenderObservable.add( () => {
-            this.targets.forEach(a => {
-                a.physicsImpostor?.applyForce(new Vector3(0, 9.9, 0), a.getAbsolutePosition());
-            });
-        });
+        // Create an example target that flies towards the user
+        setInterval(() => this.generateTarget(), 5000);
 
         this.scene.debugLayer.show(); 
     }
@@ -353,6 +337,11 @@ class Game
         } else {
             this.pullBowString();
         }
+
+        // apply a counter force to cancel gravity
+        this.targets.forEach(t => {
+            t.physicsImpostor?.applyForce(new Vector3(0, 9.8, 0), t.getAbsolutePosition());
+        });
     }
 
     // Process event handlers for controller input
@@ -363,6 +352,7 @@ class Game
         this.onRightSqueeze(this.rightController?.motionController?.getComponent("xr-standard-squeeze"));
         this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
         this.onLeftY(this.leftController?.motionController?.getComponent("y-button"));
+        this.onLeftX(this.leftController?.motionController?.getComponent("x-button"));
     }
 
     private onLeftY(component?: WebXRControllerComponent)
@@ -378,6 +368,27 @@ class Game
                     this.setWeaponPanelVisibility(true);
                     this.relocatePanel();
                 }
+            }
+        }
+    }
+
+    private onLeftX(component?: WebXRControllerComponent) {  
+        // make all targets slow down
+        if(component?.changes.pressed) {
+            if(component?.pressed) {
+                this.in_slow_time = true;
+                this.targets.forEach(t => {
+                    var v = t.physicsImpostor!.getLinearVelocity()!;
+                    this.targets_prev_velocity.set(t, v);
+                    t.physicsImpostor?.setLinearVelocity(v.scale(this.time_slow_factor));
+                });
+            } else {
+                this.targets.forEach(t => {
+                    var v = this.targets_prev_velocity.get(t);
+                    t.physicsImpostor?.setLinearVelocity(v!);
+                });
+                this.targets_prev_velocity.clear();  // clear the map
+                this.in_slow_time = false;
             }
         }
     }
@@ -410,13 +421,14 @@ class Game
                 } else if (this.weapon_in_rightHand == this.weapon_archery) {
                     this.weapon_in_leftHand?.setParent(null);
                     this.weapon_in_leftHand = null;
+                } else if (this.weapon_in_rightHand == this.weapon_arrow && this.arrow_notched) {
+                    this.shootArrow("right");
                 }
                 this.weapon_in_rightHand?.setParent(null);
                 this.weapon_in_rightHand = null;
             }
         }
     }
-
 
     private onLeftTrigger(component?: WebXRControllerComponent)
     {
@@ -441,6 +453,8 @@ class Game
                 if (this.weapon_in_leftHand == this.weapon_archery) {
                     this.weapon_in_rightHand?.setParent(null);
                     this.weapon_in_rightHand = null;
+                } else if (this.weapon_in_leftHand == this.weapon_arrow && this.arrow_notched) {
+                    this.shootArrow("left");
                 }
                 this.weapon_in_leftHand?.setParent(null);
                 this.weapon_in_leftHand = null;
@@ -449,23 +463,8 @@ class Game
     }
 
     private grabArrow(hand : string) : void {
-        /*this.arrow_clone = new TransformNode("arrow clone", this.scene);
-        var array = this.weapon_arrow!.getChildMeshes();
-        for (let index = 0; index < array.length; index++) {
-            array[index].setParent(this.arrow_clone);
-        }
-
-        if (hand == "right") {
-            this.arrow_clone.setParent(this.right_grip_transform);
-            this.arrow_clone.position = new Vector3(this.right_grip_transform?.position.x, this.right_grip_transform?.position.y, this.right_grip_transform?.position.z);
-            this.weapon_in_rightHand = this.weapon_arrow;
-        } else if (hand == "left") {
-            this.arrow_clone.setParent(this.left_grip_transform);
-            this.arrow_clone.position = new Vector3(this.left_grip_transform?.position.x, this.left_grip_transform?.position.y, this.left_grip_transform?.position.z);
-            this.weapon_in_leftHand = this.weapon_arrow;
-        }*/
-
         if (this.weapon_arrow) {
+            this.weapon_arrow.setEnabled(true);
             if (hand == "right") {
                 this.arrow_notched = false;
                 this.weapon_arrow.setParent(this.right_grip_transform);
@@ -487,8 +486,7 @@ class Game
     private notchArrow() {
         if (this.weapon_arrow && this.weapon_archery && this.left_grip_transform && this.right_grip_transform) {
             if (this.weapon_in_leftHand == this.weapon_archery && this.weapon_in_rightHand == this.weapon_arrow) {
-                if (Vector3.Distance(this.left_grip_transform.position, this.right_grip_transform.position) <= 0.01) {
-                // if (this.left_grip_transform.position.subtract(this.right_grip_transform.position).length() <= 0.05) {
+                if (Vector3.Distance(this.left_grip_transform.absolutePosition, this.right_grip_transform.absolutePosition) <= 0.25) {
                     this.weapon_arrow.setParent(null);
                     this.weapon_arrow.setParent(this.left_grip_transform);
                     this.weapon_arrow.position = new Vector3(this.left_grip_transform?.position.x, this.left_grip_transform?.position.y, this.left_grip_transform?.position.z);
@@ -497,8 +495,7 @@ class Game
                     this.arrow_notched = true;
                 }
             } else if (this.weapon_in_leftHand == this.weapon_arrow && this.weapon_in_rightHand == this.weapon_archery) {
-                if (Vector3.Distance(this.left_grip_transform.position, this.right_grip_transform.position) <= 0.01) {
-                // if (this.left_grip_transform.position.subtract(this.right_grip_transform.position).length() <= 0.05) {
+                if (Vector3.Distance(this.left_grip_transform.absolutePosition, this.right_grip_transform.absolutePosition) <= 0.25) {
                     this.weapon_arrow.setParent(null);
                     this.weapon_arrow.setParent(this.right_grip_transform);
                     this.weapon_arrow.position = new Vector3(this.right_grip_transform?.position.x, this.right_grip_transform?.position.y, this.right_grip_transform?.position.z);
@@ -512,16 +509,43 @@ class Game
 
     private pullBowString() {
         if (this.weapon_archery && this.weapon_arrow && this.left_grip_transform && this.right_grip_transform) {
-            this.string_pullback = Vector3.Distance(this.left_grip_transform.position, this.right_grip_transform.position);
-            if (this.string_pullback > 1) {
-                this.string_pullback = 1;
+            if (this.leftController?.grip && this.rightController?.grip) {
+                this.string_pullback = Vector3.Distance(this.leftController.grip?.position, this.rightController.grip?.position);
             }
+
             if (this.weapon_in_rightHand == this.weapon_archery) {
-                this.weapon_arrow.position.y = this.right_grip_transform?.position.y - this.string_pullback - 0.4;
+                this.weapon_arrow.position = new Vector3(this.right_grip_transform?.position.x, this.right_grip_transform?.position.y - 0.4 + this.string_pullback, this.right_grip_transform?.position.z);
+                this.weapon_arrow.rotation = new Vector3(this.right_grip_transform!.rotation.x-Math.PI/2, this.right_grip_transform!.rotation.y, this.right_grip_transform!.rotation.z);
             } else if (this.weapon_in_leftHand == this.weapon_archery) {
-                this.weapon_arrow.position.y = this.left_grip_transform?.position.y - this.string_pullback - 0.4;
+                this.weapon_arrow.position = new Vector3(this.left_grip_transform?.position.x, this.left_grip_transform?.position.y - 0.4 + this.string_pullback, this.left_grip_transform?.position.z);
+                this.weapon_arrow.rotation = new Vector3(this.left_grip_transform!.rotation.x-Math.PI/2, this.left_grip_transform!.rotation.y, this.left_grip_transform!.rotation.z);
             }
         }
+    }
+
+    private shootArrow(hand : string) {
+        var arrow_mesh = this.weapon_arrow!.getChildMeshes()[0];
+        var pos = arrow_mesh.getAbsolutePosition().clone();
+        var dir = this.leftController?.pointer.absolutePosition.subtract(this.rightController!.pointer.absolutePosition);
+        dir?.normalize();
+        var rotation_q = arrow_mesh.absoluteRotationQuaternion.clone();
+
+        // this.weapon_arrow?.setParent(null);
+        this.arrow_notched = false;
+        if (hand == "right") {
+            this.weapon_in_rightHand = null;
+        } else if (hand == "left") {
+            this.weapon_in_leftHand = null;
+        }
+
+        var instanceArrow = new InstancedMesh("shooted arrow", arrow_mesh as Mesh);
+        instanceArrow.parent = null;
+        instanceArrow.position = pos;
+        instanceArrow.rotationQuaternion = rotation_q;
+        instanceArrow.physicsImpostor = new PhysicsImpostor(instanceArrow, PhysicsImpostor.BoxImpostor, {mass: .5}, this.scene);
+        instanceArrow.physicsImpostor!.setLinearVelocity(dir!.scale(this.arrow_velocity*this.string_pullback));
+        
+        this.weapon_arrow?.setEnabled(false);
     }
 
     private throwHatchet() : void {
@@ -764,6 +788,7 @@ class Game
     }
 
     private loadAssets() : void {
+        var pos = MeshBuilder.CreateBox("box", {size:1}, this.scene);
         // The assets manager can be used to load multiple assets
         var assetsManager = new AssetsManager(this.scene);
         this.world = new TransformNode("world", this.scene);
@@ -820,15 +845,10 @@ class Game
         this.weapon_arrow = new TransformNode("weapon_arrow", this.scene);
         var weapon_arrow_task = assetsManager.addMeshTask("weapon_arrow", "", "assets/models/", "arrow.obj");
         weapon_arrow_task.onSuccess = (task) => {
-            task.loadedMeshes.forEach(element => {
-                if (element.name == "default") {
-                    element.dispose();
-                    return;
-                }
-                element.isPickable = false;
-                element.parent = this.weapon_arrow;
-            });
-            this.weapon_arrow?.scaling.scaleInPlace(this.weapon_arrow_scale);
+            this.weapon_arrow_mesh = Mesh.MergeMeshes(task.loadedMeshes as Mesh[]);
+            this.weapon_arrow_mesh!.isPickable = false;
+            this.weapon_arrow_mesh!.parent = this.weapon_arrow;
+            this.weapon_arrow_mesh!.scaling.scaleInPlace(this.weapon_arrow_scale);
         };
 
         this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
@@ -871,6 +891,38 @@ class Game
 
         // This loads all the assets and displays a loading screen
         assetsManager.load();
+    }
+
+
+    private generateTarget() : void {
+        if (this.gamePaused || !this.challenge_mode) return;
+
+        console.log("generate target");
+        if (this.targets?.length >= 10) {
+            var x = this.targets.shift();
+            if (x?.isVisible) x?.dispose()
+        }
+
+        var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
+        a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
+        a.physicsImpostor?.wakeUp();
+        a.position = this.target_initial_pos.clone();
+        var shift = new Vector3(2*Math.random() - 1, 2*Math.random() - 1, 2*Math.random() - 1);
+        a.position.addInPlace(shift);
+    
+        var dir = this.xrCamera?.globalPosition.subtract(a.position);
+        dir!.y = 0;
+        dir?.normalize();
+
+        // if a target is created when VATS is on, 
+        // store its initial velocity in map and scale it
+        var v = dir!.scale(this.target_initial_velocity);
+        if (this.in_slow_time) {
+            this.targets_prev_velocity.set(a, v);
+            v = v.scale(this.time_slow_factor);
+        }
+        a.physicsImpostor?.setLinearVelocity(v);
+        this.targets?.push(a);
     }
 }
 /******* End of the Game class ******/   
