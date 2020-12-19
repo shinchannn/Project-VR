@@ -535,6 +535,7 @@ class Game
         if (hand == "right") {
             this.weapon_in_rightHand = null;
         } else if (hand == "left") {
+            dir?.scaleInPlace(-1);
             this.weapon_in_leftHand = null;
         }
 
@@ -542,6 +543,7 @@ class Game
         instanceArrow.parent = null;
         instanceArrow.position = pos;
         instanceArrow.rotationQuaternion = rotation_q;
+        instanceArrow.scaling.scaleInPlace(this.weapon_arrow_scale);
         instanceArrow.physicsImpostor = new PhysicsImpostor(instanceArrow, PhysicsImpostor.BoxImpostor, {mass: .5}, this.scene);
         instanceArrow.physicsImpostor!.setLinearVelocity(dir!.scale(this.arrow_velocity*this.string_pullback));
         
@@ -848,7 +850,7 @@ class Game
             this.weapon_arrow_mesh = Mesh.MergeMeshes(task.loadedMeshes as Mesh[]);
             this.weapon_arrow_mesh!.isPickable = false;
             this.weapon_arrow_mesh!.parent = this.weapon_arrow;
-            this.weapon_arrow_mesh!.scaling.scaleInPlace(this.weapon_arrow_scale);
+            this.weapon_arrow!.scaling.scaleInPlace(this.weapon_arrow_scale);
         };
 
         this.weapon_rifle = new TransformNode("weapon_rifle", this.scene);
