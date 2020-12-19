@@ -16,7 +16,7 @@ import { Sound } from "@babylonjs/core/Audio/sound";
 import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
 import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
 import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh} from "@babylonjs/core";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh, ActionManager, ExecuteCodeAction} from "@babylonjs/core";
 import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
 // Physics
@@ -282,7 +282,7 @@ class Game
         // Loads world, sound effects and weapon meshes
         this.loadAssets();
 
-        // Enable physics engine with no gravity
+        // Regular gravity
         this.scene.enablePhysics(new Vector3(0, -9.8, 0), new CannonJSPlugin(undefined, undefined, Cannon));
 
         // Assign the left and right controllers to member variables
@@ -351,7 +351,25 @@ class Game
         this.onLeftTrigger(this.leftController?.motionController?.getComponent("xr-standard-trigger"));
         this.onRightSqueeze(this.rightController?.motionController?.getComponent("xr-standard-squeeze"));
         this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
+        this.onLeftY(this.leftController?.motionController?.getComponent("y-button"));
         this.onLeftX(this.leftController?.motionController?.getComponent("x-button"));
+    }
+
+    private onLeftY(component?: WebXRControllerComponent)
+    {  
+        if(component?.changes.pressed) {
+            if(component?.pressed) {
+                if (this.weapon_panel==null) {
+                    this.renderWeaponPanel();
+                    this.relocatePanel();
+                } else if (this.weapon_panel?.isVisible) {
+                    this.setWeaponPanelVisibility(false);
+                } else if (!this.weapon_panel?.isVisible) {
+                    this.setWeaponPanelVisibility(true);
+                    this.relocatePanel();
+                }
+            }
+        }
     }
 
     private onLeftX(component?: WebXRControllerComponent) {  
@@ -372,7 +390,7 @@ class Game
                 this.targets_prev_velocity.clear();  // clear the map
                 this.in_slow_time = false;
             }
-        }  
+        }
     }
 
     private onRightTrigger(component?: WebXRControllerComponent) {
@@ -412,24 +430,8 @@ class Game
         }
     }
 
-    
-
     private onLeftTrigger(component?: WebXRControllerComponent)
     {
-        if (component?.changes.pressed) {
-            if (component.pressed) {
-                if (this.weapon_panel==null) {
-                    this.renderWeaponPanel();
-                    this.relocatePanel();
-                } else if (this.weapon_panel?.isVisible) {
-                    this.setWeaponPanelVisibility(false);
-                } else if (!this.weapon_panel?.isVisible) {
-                    this.setWeaponPanelVisibility(true);
-                    this.relocatePanel();
-                }
-            }
-        }
-
         if (this.jetpack_equipped) {
             if (component?.pressed) {
                 var downwardVelocity = component.value * this.jetpack_max_velocity * -1;
@@ -559,7 +561,6 @@ class Game
         hatchet_mesh.rotationQuaternion = r!;
         hatchet_mesh._physicsImpostor!.setLinearVelocity(dir.scale(this.weapon_hatchet_velocity_factor));
         var upperArmLength = 0.3;
-        
         hatchet_mesh.physicsImpostor!.setAngularVelocity(dir.scale(10/upperArmLength)); 
     }
 
@@ -588,11 +589,36 @@ class Game
         }
     }
 
+    private scaleWeaponOnHand(weapon : TransformNode) : number {
+        /*
+            return normal scale of when weapons in hand
+        */
+        var ret_scale = -1;
+        switch (weapon) {
+            case this.weapon_rifle:
+                ret_scale = this.weapon_rifle_scale;
+                break;
+            case this.weapon_hatchet:
+                ret_scale = this.weapon_hatchet_scale;
+                break;
+            case this.weapon_arrow:
+                ret_scale = this.weapon_arrow_scale;
+                break;
+            case this.weapon_archery:
+                ret_scale = this.weapon_archery_scale;
+                break;
+        }
+        return ret_scale;
+    }
+
+
     private findIntersectedWeapon(hand : string) : void {
         if (hand == "right") {
             for (const weapon of this.weapon_list) {
                 for (const mesh of weapon.getChildMeshes()) {
                     if (this.rightController!.grip!.intersectsMesh(mesh)) {
+                        var normal_scale = this.scaleWeaponOnHand(weapon);
+                        weapon.scaling = Vector3.One().scale(normal_scale);
                         weapon.setParent(this.right_grip_transform);
                         weapon.position = new Vector3(this.right_grip_transform?.position.x, this.right_grip_transform?.position.y, this.right_grip_transform?.position.z);
                         this.alignWeapon(weapon, hand);
@@ -605,6 +631,8 @@ class Game
             for (const weapon of this.weapon_list) {
                 for (const mesh of weapon.getChildMeshes()) {
                     if (this.leftController!.grip!.intersectsMesh(mesh)) {
+                        var normal_scale = this.scaleWeaponOnHand(weapon);
+                        weapon.scaling = Vector3.One().scale(normal_scale);
                         weapon.setParent(this.left_grip_transform);
                         weapon.position = new Vector3(this.left_grip_transform?.position.x, this.left_grip_transform?.position.y, this.left_grip_transform?.position.z);
                         this.alignWeapon(weapon, hand);
@@ -705,7 +733,9 @@ class Game
 
         this.weapon_panel!.position = new Vector3(0, 0, -this.weapon_panel_radius + 0.5);
         
-        this.weapon_panel_transform!.rotationQuaternion =this.xrCamera!.rotationQuaternion.clone();
+        var y = this.xrCamera!.rotationQuaternion.toEulerAngles().y;
+        var rotation_q = Quaternion.FromEulerAngles(0, y, 0);
+        this.weapon_panel_transform!.rotationQuaternion = rotation_q;
     }
 
     private setWeaponPanelVisibility(b: boolean) : void {
@@ -722,33 +752,36 @@ class Game
 
             this.gui_manager!.addControl(this.weapon_panel);
             this.weapon_panel.radius = this.weapon_panel_radius;
-            this.weapon_panel.margin = 0.1;
-            this.weapon_panel.blockLayout = true;
-            this.weapon_panel.rows = 2;
-            this.weapon_panel.blockLayout = true;
+            this.weapon_panel.margin = .05;
+            // this.weapon_panel.blockLayout = true;
+            this.weapon_panel.rows = 1;
     
-            var a = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
-            a.visibility = 0.1;
+            var size_button = new Vector3(2, .1, 2);
+            var scale = .2;
+
+            size_button.scaleInPlace(scale);
+
+            var a = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z})
+            a.visibility = .1;
             var pushButton = new MeshButton3D(a, "pushButton");
             this.weapon_rifle!.parent = a;
+            this.weapon_rifle!.rotation.y += Math.PI/2;
+            this.weapon_rifle?.scaling.scaleInPlace(scale * .8);
             this.weapon_panel.addControl(pushButton);
     
-            var b = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
-            b.visibility = 0.1;
+            var b = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z});
+            b.visibility = .1;
             var pushButton = new MeshButton3D(b, "pushButton");
             this.weapon_archery!.parent = b;
-            this.weapon_panel.addControl(pushButton);
-    
-            var c = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
-            c.visibility = 0.1;
-            var pushButton = new MeshButton3D(c, "pushButton");
-            this.weapon_arrow!.parent = c;
+            this.weapon_archery?.scaling.scaleInPlace(scale);
             this.weapon_panel.addControl(pushButton);
             
-            var d = MeshBuilder.CreateBox("button", {width: 2, depth:0.1, height:2})
-            d.visibility = 0.1;
-            var pushButton = new MeshButton3D(d, "pushButton");
-            this.weapon_hatchet!.parent = d;
+            var c = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z});
+            c.visibility = .1;
+            var pushButton = new MeshButton3D(c, "pushButton");
+            this.weapon_hatchet!.parent = c;
+            this.weapon_hatchet!.rotation.y += Math.PI/2;
+            this.weapon_hatchet?.scaling.scaleInPlace(scale);
             this.weapon_panel.addControl(pushButton);
         }
         this.relocatePanel();
@@ -843,11 +876,8 @@ class Game
                 }
                 element.isPickable = false;
                 element.parent = this.weapon_hatchet;
-                element.scaling.scaleInPlace(this.weapon_hatchet_scale);
-                // element.physicsImpostor = new PhysicsImpostor(element, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
-                // element.physicsImpostor.sleep();
             });
-            // this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
+            this.weapon_hatchet?.scaling.scaleInPlace(this.weapon_hatchet_scale);
         };
 
         this.target = new TransformNode("target", this.scene);
