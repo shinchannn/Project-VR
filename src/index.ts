@@ -323,6 +323,7 @@ class Game
     private pause() : void {
         if (this.challenge_mode) {
             this.targets.forEach(t => {
+                if (t.isDisposed()) return;  // skip disposed targets
                 if (t.physicsImpostor) {
                     this.targets_velocity_before_pause.set(t, t.physicsImpostor!.getLinearVelocity()!);
                 }
@@ -335,6 +336,7 @@ class Game
     private resume() : void {
         if (this.challenge_mode) {
             this.targets.forEach(t => {
+                if (t.isDisposed()) return;  // skip disposed targets
                 t.physicsImpostor?.wakeUp();
                 if (this.targets_velocity_before_pause.has(t)) {
                     var v = this.targets_velocity_before_pause.get(t);
@@ -405,12 +407,14 @@ class Game
             if(component?.pressed) {
                 this.in_slow_time = true;
                 this.targets.forEach(t => {
+                    if (t.isDisposed()) return;  // skip disposed targets
                     var v = t.physicsImpostor!.getLinearVelocity()!;
                     this.targets_velocity_before_VATS.set(t, v);
                     t.physicsImpostor?.setLinearVelocity(v.scale(this.time_slow_factor));
                 });
             } else {
                 this.targets.forEach(t => {
+                    if (t.isDisposed()) return;
                     var v = this.targets_velocity_before_VATS.get(t);
                     t.physicsImpostor?.setLinearVelocity(v!);
                 });
