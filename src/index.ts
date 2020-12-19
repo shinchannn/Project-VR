@@ -97,10 +97,13 @@ class Game
     private target_initial_pos : Vector3;
 
     // Data structure for VATS
-    private targets_prev_velocity : Map<Mesh, Vector3>;
+    private targets_velocity_before_VATS : Map<Mesh, Vector3>;
     private time_slow_factor : number;
     private target_initial_velocity: number;
     private in_slow_time: boolean;
+
+    // map to store velocity before pausing
+    private targets_velocity_before_pause : Map<Mesh, Vector3>;
 
     constructor()
     {
@@ -118,7 +121,7 @@ class Game
         this.rightController = null;
 
         this.gameStarted = false;
-        this.gamePaused = false;
+        this.gamePaused = true;
 
         // World
         this.world = null;
@@ -177,10 +180,11 @@ class Game
 
         this.weapon_arrow_mesh = null;
         
-        this.targets_prev_velocity = new Map<Mesh, Vector3>();
+        this.targets_velocity_before_VATS = new Map<Mesh, Vector3>();
         this.time_slow_factor = .5;
         this.in_slow_time = false;
-
+        
+        this.targets_velocity_before_pause = new Map<Mesh, Vector3>();
     }
 
     start() : void 
@@ -259,15 +263,8 @@ class Game
             {
                 // Start the game only in immersive mode
                 this.gameStarted = true;
-
-                // Need to set both play and autoplay depending on
-                // whether the music has finished loading or not
-                // if(this.sound_swoosh)
-                // {
-                //     this.sound_swoosh.autoplay = true;
-                //     this.sound_swoosh.play();
-                // } 
-                        
+                this.gamePaused = false;
+                this.resume();
             }
             // This boolean flag is necessary to prevent the pause function
             // from being executed twice (this may be a bug in the xrHelper)
@@ -275,7 +272,8 @@ class Game
             {
                 // Pause the game and music upon exit
                 this.gameStarted = false;
-                // this.pause();
+                this.gamePaused = true;
+                this.pause();
             }
         });
 
@@ -316,6 +314,31 @@ class Game
         setInterval(() => this.generateTarget(), 5000);
 
         this.scene.debugLayer.show(); 
+    }
+
+    private pause() : void {
+        if (this.challenge_mode) {
+            this.targets.forEach(t => {
+                if (t.physicsImpostor) {
+                    this.targets_velocity_before_pause.set(t, t.physicsImpostor!.getLinearVelocity()!);
+                }
+                t.physicsImpostor?.sleep();
+            });
+        }
+        // What about flying arrows and hatchet?
+    }
+
+    private resume() : void {
+        if (this.challenge_mode) {
+            this.targets.forEach(t => {
+                t.physicsImpostor?.wakeUp();
+                if (this.targets_velocity_before_pause.has(t)) {
+                    var v = this.targets_velocity_before_pause.get(t);
+                    t.physicsImpostor?.setLinearVelocity(v!);
+                }
+            });
+            this.targets_velocity_before_pause.clear();
+        }
     }
 
      // The main update loop will be executed once per frame before the scene is rendered
@@ -379,15 +402,15 @@ class Game
                 this.in_slow_time = true;
                 this.targets.forEach(t => {
                     var v = t.physicsImpostor!.getLinearVelocity()!;
-                    this.targets_prev_velocity.set(t, v);
+                    this.targets_velocity_before_VATS.set(t, v);
                     t.physicsImpostor?.setLinearVelocity(v.scale(this.time_slow_factor));
                 });
             } else {
                 this.targets.forEach(t => {
-                    var v = this.targets_prev_velocity.get(t);
+                    var v = this.targets_velocity_before_VATS.get(t);
                     t.physicsImpostor?.setLinearVelocity(v!);
                 });
-                this.targets_prev_velocity.clear();  // clear the map
+                this.targets_velocity_before_VATS.clear();  // clear the map
                 this.in_slow_time = false;
             }
         }
@@ -898,7 +921,7 @@ class Game
 
 
     private generateTarget() : void {
-        if (this.gamePaused || !this.challenge_mode) return;
+        if (!this.gameStarted || !this.challenge_mode) return;
 
         console.log("generate target");
         if (this.targets?.length >= 10) {
@@ -921,7 +944,7 @@ class Game
         // store its initial velocity in map and scale it
         var v = dir!.scale(this.target_initial_velocity);
         if (this.in_slow_time) {
-            this.targets_prev_velocity.set(a, v);
+            this.targets_velocity_before_VATS.set(a, v);
             v = v.scale(this.time_slow_factor);
         }
         a.physicsImpostor?.setLinearVelocity(v);
