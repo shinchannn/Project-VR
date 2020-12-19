@@ -68,6 +68,10 @@ class Game
     private weapon_in_leftHand : TransformNode | null;
 
     private sound_swoosh : Sound | null;
+    private sound_jp : Sound | null;
+    private sound_shoot : Sound | null;
+    private sound_load : Sound | null;
+
 
     private gui_manager : GUI3DManager | null;
 
@@ -150,6 +154,9 @@ class Game
 
         // Sound effects
         this.sound_swoosh = null;
+        this.sound_jp = null;
+        this.sound_load = null;
+        this.sound_shoot = null;
 
         this.gui_manager = null;
 
@@ -544,6 +551,9 @@ class Game
     }
 
     private shootArrow(hand : string) {
+        if (!this.sound_swoosh?.isPlaying) {
+            this.sound_swoosh?.play();
+        }
         var arrow_mesh = this.weapon_arrow!.getChildMeshes()[0];
         var pos = arrow_mesh.getAbsolutePosition().clone();
         var dir = this.leftController?.pointer.absolutePosition.subtract(this.rightController!.pointer.absolutePosition);
@@ -588,8 +598,8 @@ class Game
     }
 
     private fireRifle() : void {
-        if (!this.sound_swoosh?.isPlaying) {
-            this.sound_swoosh?.play();
+        if (!this.sound_shoot?.isPlaying) {
+            this.sound_shoot?.play();
         }
         // var laserPoints = [];
         // laserPoints.push(this.weapon_rifle!.absolutePosition.clone());
@@ -668,6 +678,12 @@ class Game
     }
 
     private alignWeapon(weapon : TransformNode, hand : string) {
+        // play the sound of load when grabbing rifle
+        if (weapon == this.weapon_rifle) {
+            if (!this.sound_load?.isPlaying) {
+                this.sound_load?.play();
+            }
+        }
         if (hand == "right") {
             if (weapon == this.weapon_archery) {
                 weapon.rotation = new Vector3(this.right_grip_transform!.rotation.x, this.right_grip_transform!.rotation.y + Math.PI/2, this.right_grip_transform!.rotation.z+Math.PI/2);
@@ -843,9 +859,31 @@ class Game
         };
         //this.world.setEnabled(false);
 
+        // Sound effects
         var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
         sound_swoosh_task.onSuccess = (task) => {
             this.sound_swoosh = new Sound("swoosh", task.data, this.scene, null, {
+                loop: false,
+            });
+        };
+
+        var sound_jp_task = assetsManager.addBinaryFileTask("sound_jp", "assets/sounds/jp.wav");
+        sound_jp_task.onSuccess = (task) => {
+            this.sound_jp = new Sound("jet pack", task.data, this.scene, null, {
+                loop: false,
+            });
+        };
+
+        var sound_shoot_task = assetsManager.addBinaryFileTask("sound_shoot", "assets/sounds/shot.wav");
+        sound_shoot_task.onSuccess = (task) => {
+            this.sound_shoot = new Sound("shoot", task.data, this.scene, null, {
+                loop: false,
+            });
+        };
+
+        var sound_load_task = assetsManager.addBinaryFileTask("sound_load", "assets/sounds/unload.wav");
+        sound_load_task.onSuccess = (task) => {
+            this.sound_load = new Sound("load", task.data, this.scene, null, {
                 loop: false,
             });
         };
