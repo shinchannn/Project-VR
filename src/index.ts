@@ -554,10 +554,11 @@ class Game
         var r = this.weapon_hatchet?.absoluteRotationQuaternion;
         this.weapon_hatchet?.setParent(null);
         var hatchet_mesh = this.weapon_hatchet!.getChildMeshes()[0];
-        var prev_pos = hatchet_mesh.absolutePosition;
+        var prev_pos = this.right_grip_prev_pos;
         var curr_pos = this.rightController!.grip!.position.clone();
         var dir = curr_pos.subtract(this.right_grip_prev_pos!);
         hatchet_mesh.parent = null;
+        hatchet_mesh.scaling.scaleInPlace(this.weapon_hatchet_scale);
         hatchet_mesh.position = prev_pos;
         hatchet_mesh.physicsImpostor = new PhysicsImpostor(hatchet_mesh, PhysicsImpostor.BoxImpostor, {mass: 3}, this.scene);
         hatchet_mesh.rotationQuaternion = r!;
