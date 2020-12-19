@@ -228,16 +228,13 @@ class Game
 
 
         // Creates a default skybox
-        /*const environment = this.scene.createDefaultEnvironment({
-            createGround: true,
-            groundSize: 100,
+        const environment = this.scene.createDefaultEnvironment({
             skyboxSize: 50,
-            skyboxColor: new Color3(0, 0, 0)
+            skyboxColor: new Color3(89/255, 156/255, 197/255)
         });
 
         // Make sure the ground and skybox are not pickable!
-        environment!.ground!.isPickable = false;
-        environment!.skybox!.isPickable = false;*/
+        environment!.skybox!.isPickable = false;
 
         // Creates the XR experience helper
         const xrHelper = await this.scene.createDefaultXRExperienceAsync({});
