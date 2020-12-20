@@ -389,12 +389,9 @@ class Game
             t.physicsImpostor?.setAngularVelocity(Vector3.Zero());
         });
 
-        // if (this.c) {
-        //     this.c!.position = this.targets[0].position;
-        //     this.c!.rotation = this.targets[0].rotation;
-        // }
         this.targets_shadows.forEach((mesh_arr : Array<Mesh>, t : Mesh) => {
             mesh_arr.forEach(shadow => {
+                if (shadow.isDisposed()) return;
                 shadow.position = t.position;
                 shadow.rotation = t.rotation;
             })
@@ -682,15 +679,13 @@ class Game
         // laserPointer.color = Color3.Blue();
         // laserPointer.alpha = .5;
         // laserPointer.isPickable = false;
-        var ray = new Ray(this.weapon_rifle!.absolutePosition.clone(), this.weapon_rifle!.forward.normalizeToNew(), 10);
-        var pickInfo = this.scene.pickWithRay(ray);
-
-        // If an object was hit, select it
-        if(pickInfo?.hit)
-        {
-            var hit_object = pickInfo!.pickedMesh;
-            if (hit_object?.name.startsWith("target")) {
-                hit_object.dispose();
+        if (this.rifle_ray) {
+            this.rifle_ray.origin = this.weapon_rifle!.absolutePosition.clone();
+            this.rifle_ray.direction = this.weapon_rifle!.forward.normalizeToNew();
+            var pickInfo = this.scene.pickWithRay(this.rifle_ray);
+            if(pickInfo?.hit) {
+                var hit_object = pickInfo!.pickedMesh;
+                hit_object?.dispose();
             }
         }
     }
@@ -882,6 +877,7 @@ class Game
 
             var a = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z})
             a.visibility = .1;
+            a.isPickable = false;
             var pushButton = new MeshButton3D(a, "pushButton");
             this.weapon_rifle!.parent = a;
             this.weapon_rifle!.rotation.y += Math.PI/2;
@@ -890,6 +886,7 @@ class Game
     
             var b = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z});
             b.visibility = .1;
+            b.isPickable = false;
             var pushButton = new MeshButton3D(b, "pushButton");
             this.weapon_archery!.parent = b;
             this.weapon_archery?.scaling.scaleInPlace(scale);
@@ -897,6 +894,7 @@ class Game
             
             var c = MeshBuilder.CreateBox("button", {width: size_button.x, depth:size_button.y, height:size_button.z});
             c.visibility = .1;
+            c.isPickable = false;
             var pushButton = new MeshButton3D(c, "pushButton");
             this.weapon_hatchet!.parent = c;
             this.weapon_hatchet!.rotation.y += Math.PI/2;
@@ -914,6 +912,7 @@ class Game
         var world_task = assetsManager.addMeshTask("world", "", "assets/models/", "PolyIsland.obj");
         world_task.onSuccess = (task) => {
             task.loadedMeshes.forEach((mesh) => {
+                mesh.isPickable = false;
                 mesh.parent = this.world;
                 // Mountains and canyon
                 if (mesh.name == "Icosphere") {
@@ -937,7 +936,6 @@ class Game
             this.world?.scaling.scaleInPlace(2.5);
             this.world?.position.addInPlace(new Vector3(0,-5.35,0));
         };
-        //this.world.setEnabled(false);
 
         // Sound effects
         var sound_swoosh_task = assetsManager.addBinaryFileTask("sound_swoosh", "assets/sounds/swoosh.wav");
@@ -1041,7 +1039,7 @@ class Game
         // Do clean up to avoid having too many unused targets
         if (this.targets?.length >= 10) {
             var x = this.targets.shift();
-            if (x?.isVisible) {
+            if (x) {
                 // delete corresponding shadow meshes
                 this.targets_shadows.get(x)?.forEach(mesh => {
                     mesh.dispose();
@@ -1062,7 +1060,6 @@ class Game
             shadow_mesh.visibility = 1;
         }
         var target = Mesh.MergeMeshes(arr);
-
 
         if (target) {
             target.visibility = 0;  // hide real targets
