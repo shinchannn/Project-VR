@@ -109,6 +109,12 @@ class Game
     // map to store velocity before pausing
     private targets_velocity_before_pause : Map<Mesh, Vector3>;
 
+    // map from targets to its shadows
+    private targets_shadows : Map<Mesh, Array<Mesh>>;
+    private shadow_mtl : StandardMaterial | null;
+    private rifle_ray : Ray | null;
+    private highlighted_mesh : Mesh | null;
+
     constructor()
     {
         // Get the canvas element 
@@ -192,6 +198,16 @@ class Game
         this.in_slow_time = false;
         
         this.targets_velocity_before_pause = new Map<Mesh, Vector3>();
+
+        this.targets_shadows = new Map<Mesh, Array<Mesh>>();
+        
+        this.shadow_mtl = new StandardMaterial("shadow_mtl", this.scene);
+        this.shadow_mtl.emissiveColor = Color3.Red();
+        this.shadow_mtl.diffuseColor = Color3.Red();
+        this.shadow_mtl.ambientColor =  Color3.Red();
+
+        this.rifle_ray = null;
+        this.highlighted_mesh = null;
     }
 
     start() : void 
@@ -372,6 +388,19 @@ class Game
             t.physicsImpostor?.applyForce(new Vector3(0, 9.8, 0), t.getAbsolutePosition());
             t.physicsImpostor?.setAngularVelocity(Vector3.Zero());
         });
+
+        // if (this.c) {
+        //     this.c!.position = this.targets[0].position;
+        //     this.c!.rotation = this.targets[0].rotation;
+        // }
+        this.targets_shadows.forEach((mesh_arr : Array<Mesh>, t : Mesh) => {
+            mesh_arr.forEach(shadow => {
+                shadow.position = t.position;
+                shadow.rotation = t.rotation;
+            })
+        });
+
+        this.highlightTarget();
     }
 
     // Process event handlers for controller input
@@ -434,6 +463,32 @@ class Game
                 });
                 this.targets_velocity_before_VATS.clear();  // clear the map
                 this.in_slow_time = false;
+            }
+        }
+    }
+
+    private highlightTarget() : void {
+        if (this.weapon_in_leftHand == this.weapon_rifle || this.weapon_in_rightHand == this.weapon_rifle) {
+            if (this.rifle_ray) {
+                this.rifle_ray.origin = this.weapon_rifle!.absolutePosition.clone();
+                this.rifle_ray.direction = this.weapon_rifle!.forward.normalizeToNew();
+                var pickInfo = this.scene.pickWithRay(this.rifle_ray);
+                var pickedMesh = pickInfo?.pickedMesh;
+                if (this.highlighted_mesh) {
+                    this.highlighted_mesh.material = null;
+                    this.highlighted_mesh = null;
+                }
+                if (pickedMesh != null && this.in_slow_time) {
+                    // there exists picked mesh
+                    this.highlighted_mesh = pickedMesh as Mesh;
+                    pickedMesh.material = this.shadow_mtl;
+                }
+            }
+        } else {
+            // if nothing in hands, reset highlighted mesh to null
+            if (this.highlighted_mesh) {
+                this.highlighted_mesh.material = null;
+                this.highlighted_mesh = null;
             }
         }
     }
@@ -622,7 +677,7 @@ class Game
         // var laserPoints = [];
         // laserPoints.push(this.weapon_rifle!.absolutePosition.clone());
         // laserPoints.push(this.weapon_rifle!.absolutePosition.add(this.weapon_rifle!.forward.normalizeToNew().scale(10)));
-        // Create a laser pointer and make sure it is not pickable
+        // //Create a laser pointer and make sure it is not pickable
         // var laserPointer = MeshBuilder.CreateLines("laserPointer", {points: laserPoints}, this.scene);
         // laserPointer.color = Color3.Blue();
         // laserPointer.alpha = .5;
@@ -700,6 +755,9 @@ class Game
         if (weapon == this.weapon_rifle) {
             if (!this.sound_load?.isPlaying) {
                 this.sound_load?.play();
+            }
+            if (this.rifle_ray == null) {
+                this.rifle_ray = new Ray(this.weapon_rifle!.absolutePosition.clone(), this.weapon_rifle!.forward.normalizeToNew(), 20);
             }
         }
         if (hand == "right") {
@@ -849,7 +907,7 @@ class Game
     }
 
     private loadAssets() : void {
-        var pos = MeshBuilder.CreateBox("box", {size:1}, this.scene);
+        var pos = MeshBuilder.CreateSphere("sphere", {diameter:1}, this.scene);
         // The assets manager can be used to load multiple assets
         var assetsManager = new AssetsManager(this.scene);
         this.world = new TransformNode("world", this.scene);
@@ -980,17 +1038,37 @@ class Game
     private generateTarget() : void {
         if (!this.gameStarted || !this.challenge_mode) return;
 
-        console.log("generate target");
+        // Do clean up to avoid having too many unused targets
         if (this.targets?.length >= 10) {
             var x = this.targets.shift();
-            if (x?.isVisible) x?.dispose()
+            if (x?.isVisible) {
+                // delete corresponding shadow meshes
+                this.targets_shadows.get(x)?.forEach(mesh => {
+                    mesh.dispose();
+                })
+                this.targets_shadows.delete(x); // clean the map
+                x?.dispose();
+            }
         }
 
-        var a = MeshBuilder.CreateSphere("target", {diameter: .4}, this.scene);
+        var a = MeshBuilder.CreateSphere("target", {diameter: 0.4}, this.scene);
         var b = MeshBuilder.CreateBox("target_top", {height:0.5, width:0.1, depth:0.1});
         var c = MeshBuilder.CreateBox("target_bottom", {height:0.5, width:0.2, depth:0.1});
-        var target = Mesh.MergeMeshes([a,b,c]);
+        var arr = [a, b, c];
+        var arr_shadow = [];
+        for (var i=0; i<arr.length; i++) {
+            var shadow_mesh = arr[i].clone();
+            arr_shadow.push(shadow_mesh);
+            shadow_mesh.visibility = 1;
+        }
+        var target = Mesh.MergeMeshes(arr);
+
+
         if (target) {
+            target.visibility = 0;  // hide real targets
+            target.isPickable = false;
+            // store mapping like target -> shadow meshes array
+            this.targets_shadows.set(target, arr_shadow as Mesh[]);
             target.physicsImpostor = new PhysicsImpostor(target as IPhysicsEnabledObject, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
             target.physicsImpostor?.wakeUp();
             target.position = this.target_initial_pos.clone();
