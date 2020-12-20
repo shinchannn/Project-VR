@@ -16,7 +16,7 @@ import { Sound } from "@babylonjs/core/Audio/sound";
 import { CylinderPanel } from "@babylonjs/gui/3D/controls/cylinderPanel"
 import { GUI3DManager } from "@babylonjs/gui/3D/gui3DManager"
 import { MeshButton3D } from "@babylonjs/gui/3D/controls/Meshbutton3D"
-import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh, ActionManager, ExecuteCodeAction} from "@babylonjs/core";
+import { AssetsManager, HighlightLayer, StandardMaterial, TransformNode, BoxBuilder, MeshBuilder, SwitchInput, Mesh, PhysicsImpostor, setAndStartTimer, InstancedMesh, Ray, LinesMesh, ActionManager, ExecuteCodeAction, IPhysicsEnabledObject} from "@babylonjs/core";
 import { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 
 // Physics
@@ -149,7 +149,7 @@ class Game
         // scale factors
         this.weapon_hatchet_scale = .05;
         this.weapon_archery_scale = .01;
-        this.weapon_rifle_scale = .2;
+        this.weapon_rifle_scale = .115;
         this.weapon_arrow_scale = .07;
 
         // Sound effects
@@ -370,6 +370,7 @@ class Game
         // apply a counter force to cancel gravity
         this.targets.forEach(t => {
             t.physicsImpostor?.applyForce(new Vector3(0, 9.8, 0), t.getAbsolutePosition());
+            t.physicsImpostor?.setAngularVelocity(Vector3.Zero());
         });
     }
 
@@ -382,6 +383,19 @@ class Game
         this.onRightTrigger(this.rightController?.motionController?.getComponent("xr-standard-trigger"));
         this.onLeftY(this.leftController?.motionController?.getComponent("y-button"));
         this.onLeftX(this.leftController?.motionController?.getComponent("x-button"));
+        this.onRightA(this.rightController?.motionController?.getComponent("a-button"));
+    }
+
+    private onRightA(component?: WebXRControllerComponent) {
+        if (component?.changes.pressed) {
+            if (component?.pressed) {
+                if (this.jetpack_equipped) {
+                    this.jetpack_equipped = false;
+                } else {
+                    this.jetpack_equipped = true;
+                }
+             }
+        }
     }
 
     private onLeftY(component?: WebXRControllerComponent)
@@ -691,10 +705,14 @@ class Game
         if (hand == "right") {
             if (weapon == this.weapon_archery) {
                 weapon.rotation = new Vector3(this.right_grip_transform!.rotation.x, this.right_grip_transform!.rotation.y + Math.PI/2, this.right_grip_transform!.rotation.z+Math.PI/2);
+            } else if (weapon == this.weapon_rifle) {
+                weapon.rotation = new Vector3(this.right_grip_transform!.position.x+Math.PI/2, this.right_grip_transform!.position.y, this.right_grip_transform!.position.z);
             }
         } else if (hand == "left") {
             if (weapon == this.weapon_archery) {
                 weapon.rotation = new Vector3(this.left_grip_transform!.rotation.x, this.left_grip_transform!.rotation.y + Math.PI/2, this.left_grip_transform!.rotation.z+Math.PI/2);
+            } else if (weapon == this.weapon_rifle) {
+                weapon.rotation = new Vector3(this.left_grip_transform!.position.x+Math.PI/2, this.left_grip_transform!.position.y, this.left_grip_transform!.position.z);
             }
         }
     }
@@ -968,26 +986,32 @@ class Game
             if (x?.isVisible) x?.dispose()
         }
 
-        var a = MeshBuilder.CreateSphere("target", {diameter: 1}, this.scene);
-        a.physicsImpostor = new PhysicsImpostor(a, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
-        a.physicsImpostor?.wakeUp();
-        a.position = this.target_initial_pos.clone();
-        var shift = new Vector3(2*Math.random() - 1, 2*Math.random() - 1, 2*Math.random() - 1);
-        a.position.addInPlace(shift);
+        var a = MeshBuilder.CreateSphere("target", {diameter: .4}, this.scene);
+        var b = MeshBuilder.CreateBox("target_top", {height:0.5, width:0.1, depth:0.1});
+        var c = MeshBuilder.CreateBox("target_bottom", {height:0.5, width:0.2, depth:0.1});
+        var target = Mesh.MergeMeshes([a,b,c]);
+        if (target) {
+            target.physicsImpostor = new PhysicsImpostor(target as IPhysicsEnabledObject, PhysicsImpostor.BoxImpostor, {mass: 1}, this.scene);
+            target.physicsImpostor?.wakeUp();
+            target.position = this.target_initial_pos.clone();
+            var shift = new Vector3(2*Math.random() - 1, 2*Math.random() - 1, 2*Math.random() - 1);
+            target.position.addInPlace(shift);
+        
     
-        var dir = this.xrCamera?.globalPosition.subtract(a.position);
-        dir!.y = 0;
-        dir?.normalize();
+            var dir = this.xrCamera?.globalPosition.subtract(target.position);
+            dir!.y = 0;
+            dir?.normalize();
 
-        // if a target is created when VATS is on, 
-        // store its initial velocity in map and scale it
-        var v = dir!.scale(this.target_initial_velocity);
-        if (this.in_slow_time) {
-            this.targets_velocity_before_VATS.set(a, v);
-            v = v.scale(this.time_slow_factor);
+            // if a target is created when VATS is on, 
+            // store its initial velocity in map and scale it
+            var v = dir!.scale(this.target_initial_velocity);
+            if (this.in_slow_time) {
+                this.targets_velocity_before_VATS.set(target, v);
+                v = v.scale(this.time_slow_factor);
+            }
+            target.physicsImpostor?.setLinearVelocity(v);
+            this.targets?.push(target);
         }
-        a.physicsImpostor?.setLinearVelocity(v);
-        this.targets?.push(a);
     }
 }
 /******* End of the Game class ******/   
