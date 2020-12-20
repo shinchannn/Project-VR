@@ -370,6 +370,7 @@ class Game
         // apply a counter force to cancel gravity
         this.targets.forEach(t => {
             t.physicsImpostor?.applyForce(new Vector3(0, 9.8, 0), t.getAbsolutePosition());
+            t.physicsImpostor?.setAngularVelocity(Vector3.Zero());
         });
     }
 
