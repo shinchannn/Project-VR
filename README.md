@@ -34,8 +34,6 @@ Sound Effect - Arrow Swoosh:
 Sound Effect - JetPack Flame: 
   URL: https://www.soundsnap.com/node/69310
 
-
-
 ## Features
 ### Weapon Panel GUI
 Upon pressing y on the left controller, a panel GUI will appear in front of the user. This panel contains the meshes of grabbable items in the game scaled down to fit inside the panel. Upon grabbing a mesh (with either grip button), the mesh will scale to game size and align to the orientation of the grabbing hand.
