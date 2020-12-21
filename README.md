@@ -3,36 +3,36 @@
 
 ## Asset Credits
 World Mesh:  
-    Artist: TBModels@cgtrader.com  
-    Model: POLYGON - Island Pack Free low-poly 3D model  
-    URL: https://www.cgtrader.com/free-3d-models/exterior/landscape/polygon-island-pack  
+  Artist: TBModels@cgtrader.com  
+  Model: POLYGON - Island Pack Free low-poly 3D model  
+  URL: https://www.cgtrader.com/free-3d-models/exterior/landscape/polygon-island-pack  
 
 Rifle Mesh:
-	Artist: abiyasamusyafa
-	Model: Infanty Assault Rifle 3D model Free low-poly 3D model
-	URL: https://www.cgtrader.com/free-3d-models/military/gun/infanty-assault-rifle-3d-model
+  Artist: abiyasamusyafa
+  Model: Infanty Assault Rifle 3D model Free low-poly 3D model
+  URL: https://www.cgtrader.com/free-3d-models/military/gun/infanty-assault-rifle-3d-model
 
 Archery Mesh:
-	Artist: diolater
-	Model: Bow Simple Medieval Low-poly 3D model
-	URL: https://www.cgtrader.com/3d-models/military/gun/bow-simple-medieval-b129b53b-e580-460c-ae3c-374584b2cbe1
+  Artist: diolater
+  Model: Bow Simple Medieval Low-poly 3D model
+  URL: https://www.cgtrader.com/3d-models/military/gun/bow-simple-medieval-b129b53b-e580-460c-ae3c-374584b2cbe1
 
 Hatchet Mesh:
-	Artist: mfischer3d
-	Model: Hatchet Free low-poly 3D model
-	URL: https://www.cgtrader.com/free-3d-models/military/melee/hatchet-2927052b-5d08-4a62-980c-19a35824b28c
+  Artist: mfischer3d
+  Model: Hatchet Free low-poly 3D model
+  URL: https://www.cgtrader.com/free-3d-models/military/melee/hatchet-2927052b-5d08-4a62-980c-19a35824b28c
 
 Sound Effect - Gun Load: 
-	URL: https://www.soundsnap.com/node/6864
+  URL: https://www.soundsnap.com/node/6864
 
 Sound Effect - Gun shot: 
-	URL: https://www.soundsnap.com/ak_47_machine_gun_single_shot_close_perspective_01_sfxbible_ss06722
+  URL: https://www.soundsnap.com/ak_47_machine_gun_single_shot_close_perspective_01_sfxbible_ss06722
 
 Sound Effect - Arrow Swoosh: 
-	URL: https://www.soundsnap.com/swishswoosh_052_wav
+  URL: https://www.soundsnap.com/swishswoosh_052_wav
 
 Sound Effect - JetPack Flame: 
-	URL: https://www.soundsnap.com/node/69310
+  URL: https://www.soundsnap.com/node/69310
 
 
 
